@@ -62,46 +62,81 @@ class YahooFinanceClient:
         end_dt = datetime.fromtimestamp(end_ts, tz=timezone.utc)
 
         def _download():
-            # Yahoo intraday data has lookback caps. Prefer period for intraday intervals.
-            is_daily = interval == "1d"
-            kwargs = {
-                "tickers": ticker,
-                "interval": interval,
-                "progress": False,
-                "auto_adjust": True,
-                "group_by": "column",
-            }
-            if is_daily:
-                kwargs.update({"start": start_dt, "end": end_dt})
+            # Choose download strategy: intraday uses period, daily uses start/end
+            intraday_intervals = {"1m", "5m", "15m", "30m", "60m"}
+            is_intraday = interval in intraday_intervals
+
+            if is_intraday:
+                # Determine period respecting Yahoo limits
+                total_seconds = max(1, int((end_dt - start_dt).total_seconds()))
+                days = (total_seconds + 86399) // 86400  # ceil to days
+                max_days = 7 if interval == "1m" else 60
+                days = max(1, min(days, max_days))
+                period = f"{days}d"
+                df = yf.download(
+                    tickers=ticker,
+                    interval=interval,
+                    period=period,
+                    progress=False,
+                    auto_adjust=True,
+                    group_by="column",
+                )
             else:
-                # Compute requested duration (days) and cap by Yahoo limits
-                requested_days = max(1, int((end_dt - start_dt).total_seconds() // 86400) + 1)
-                if interval == "1m":
-                    cap_days = 7
-                else:
-                    # 2m/5m/15m/30m/60m typically allow up to ~60 days
-                    cap_days = 60
-                period_days = max(1, min(requested_days, cap_days))
-                kwargs.update({"period": f"{period_days}d"})
-            df = yf.download(**kwargs)
+                # Daily
+                df = yf.download(
+                    tickers=ticker,
+                    interval="1d",
+                    start=start_dt,
+                    end=end_dt,
+                    progress=False,
+                    auto_adjust=True,
+                    group_by="column",
+                )
 
             if df is None or len(df) == 0:
                 return pd.DataFrame(columns=["o", "h", "l", "c", "v"]).set_index(pd.DatetimeIndex([], name="datetime"))
 
-            # Если MultiIndex (может случиться с некоторыми версиями yfinance), свернуть до уровня тикера
+            # Normalize columns: handle MultiIndex of various shapes
             if isinstance(df.columns, pd.MultiIndex):
-                try:
-                    if ticker in df.columns.get_level_values(0):
-                        df = df.xs(ticker, axis=1, level=0, drop_level=True)
-                    else:
-                        first = df.columns.get_level_values(0)[0]
-                        df = df.xs(first, axis=1, level=0, drop_level=True)
-                except Exception:
-                    # В качестве запасного варианта попробует сделать выравнивание, взяв имена второго уровня.
+                # Identify levels
+                nlvls = df.columns.nlevels
+                field_names = {"open", "high", "low", "close", "adj close", "volume"}
+                field_level = None
+                for i in range(nlvls):
+                    try:
+                        vals = [str(v).lower() for v in df.columns.get_level_values(i)]
+                    except Exception:
+                        vals = []
+                    if any(v in field_names for v in vals):
+                        field_level = i
+                        break
+                # Try to slice by ticker level if present
+                ticker_level = None
+                for i in range(nlvls):
+                    vals = [str(v) for v in df.columns.get_level_values(i)]
+                    if ticker in vals:
+                        ticker_level = i
+                        break
+                if ticker_level is not None:
+                    try:
+                        df = df.xs(ticker, axis=1, level=ticker_level, drop_level=True)
+                    except Exception:
+                        pass
+                # If still MultiIndex and we know which level has fields, group by that
+                if isinstance(df.columns, pd.MultiIndex) and field_level is not None:
+                    try:
+                        df = df.groupby(level=field_level, axis=1).first()
+                    except Exception:
+                        df.columns = [str(c[-1]) for c in df.columns]
+                # If still MultiIndex, flatten by last level
+                if isinstance(df.columns, pd.MultiIndex):
                     df.columns = [str(c[-1]) for c in df.columns]
 
             # Build case-insensitive column map
             colmap = {str(c).lower(): c for c in df.columns}
+            # Allow Adj Close as Close if Close missing
+            if "close" not in colmap and "adj close" in colmap:
+                colmap["close"] = colmap["adj close"]
 
             def _pick(name: str):
                 key = colmap.get(name.lower())
