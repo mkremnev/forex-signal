@@ -4,6 +4,10 @@ pairs:
   - OANDA:EUR_USD
   - OANDA:GBP_USD
   - OANDA:USD_JPY
+  - OANDA:EUR_GBP
+  - OANDA:GBP_CHF
+  - OANDA:USD_CAD
+  - OANDA:XAU_USD
 # Список заданий по таймфреймам
 # resolution: 1,5,15,30,60,1h,4h,D
 # poll_interval_seconds — как часто опрашивать API (подбирайте под таймфрейм и лимиты API)
