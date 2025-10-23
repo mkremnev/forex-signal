@@ -62,24 +62,55 @@ class YahooFinanceClient:
         end_dt = datetime.fromtimestamp(end_ts, tz=timezone.utc)
 
         def _download():
-            df = yf.download(tickers=ticker, interval=interval, start=start_dt, end=end_dt, progress=False, group_by="ticker")
+            df = yf.download(
+                tickers=ticker,
+                interval=interval,
+                start=start_dt,
+                end=end_dt,
+                progress=False,
+                auto_adjust=True,
+                group_by="column",
+            )
             if df is None or len(df) == 0:
                 return pd.DataFrame(columns=["o", "h", "l", "c", "v"]).set_index(pd.DatetimeIndex([], name="datetime"))
-            # yfinance returns columns: Open, High, Low, Close, Adj Close, Volume
+
+            # If MultiIndex (can happen with some yfinance versions), collapse to the ticker level
+            if isinstance(df.columns, pd.MultiIndex):
+                try:
+                    if ticker in df.columns.get_level_values(0):
+                        df = df.xs(ticker, axis=1, level=0, drop_level=True)
+                    else:
+                        first = df.columns.get_level_values(0)[0]
+                        df = df.xs(first, axis=1, level=0, drop_level=True)
+                except Exception:
+                    # As a fallback, try to flatten by taking the second level names
+                    df.columns = [str(c[-1]) for c in df.columns]
+
+            # Build case-insensitive column map
+            colmap = {str(c).lower(): c for c in df.columns}
+
+            def _pick(name: str):
+                key = colmap.get(name.lower())
+                if key is None:
+                    return pd.Series(index=df.index, dtype="float64")
+                return pd.to_numeric(df[key], errors="coerce")
+
+            o = _pick("Open")
+            h = _pick("High")
+            l = _pick("Low")
+            c = _pick("Close")
+            v = _pick("Volume")
+
+            out = pd.DataFrame({"o": o, "h": h, "l": l, "c": c, "v": v})
+
             # Ensure tz-aware UTC index
-            if df.index.tz is None:
-                df.index = df.index.tz_localize("UTC")
+            if out.index.tz is None:
+                out.index = out.index.tz_localize("UTC")
             else:
-                df.index = df.index.tz_convert("UTC")
-            out = pd.DataFrame({
-                "o": pd.to_numeric(df["Open"], errors="coerce"),
-                "h": pd.to_numeric(df["High"], errors="coerce"),
-                "l": pd.to_numeric(df["Low"], errors="coerce"),
-                "c": pd.to_numeric(df["Close"], errors="coerce"),
-                "v": pd.to_numeric(df.get("Volume", 0), errors="coerce"),
-            })
+                out.index = out.index.tz_convert("UTC")
             out.index.name = "datetime"
-            return out.dropna()
+            # Drop rows where O/H/L/C are missing
+            return out.dropna(subset=["o", "h", "l", "c"])
 
         df: pd.DataFrame = await asyncio.to_thread(_download)
         return df
