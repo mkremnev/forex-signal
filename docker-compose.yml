@@ -8,7 +8,7 @@ services:
       - .env
     environment:
       - TZ=Europe/Moscow
-      - FINNHUB_API_KEY=${FINNHUB_API_KEY}
+      - ALPHAVANTAGE_API_KEY=${ALPHAVANTAGE_API_KEY}
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
       - SQLITE_PATH=/app/data/cache.db
