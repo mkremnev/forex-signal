@@ -8,7 +8,6 @@ services:
       - .env
     environment:
       - TZ=Europe/Moscow
-      - ALPHAVANTAGE_API_KEY=${ALPHAVANTAGE_API_KEY}
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
       - SQLITE_PATH=/app/data/cache.db

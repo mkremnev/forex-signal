@@ -9,7 +9,7 @@ import pandas as pd
 import pytz
 
 from .config import load_config, AppConfig
-from .alpha_vantage_client import AlphaVantageClient, ALPHA_TIMEFRAME_MAP
+from .yahoo_finance_client import YahooFinanceClient, YAHOO_TIMEFRAME_MAP
 from .telegram_notifier import TelegramNotifier
 from .sqlite_cache import Cache
 from .analyzer import analyze_pair, Event
@@ -29,15 +29,15 @@ def _timeframe_to_seconds(tf: str) -> int:
     return mapping.get(tf, 300)
 
 
-async def fetch_candles(client: AlphaVantageClient, symbol: str, timeframe: str, bars: int = 400) -> pd.DataFrame:
+async def fetch_candles(client: YahooFinanceClient, symbol: str, timeframe: str, bars: int = 400) -> pd.DataFrame:
     now = int(datetime.now(tz=timezone.utc).timestamp())
     sec = _timeframe_to_seconds(timeframe)
     start = now - sec * (bars + 5)
 
-    resolution = ALPHA_TIMEFRAME_MAP.get(timeframe, timeframe)
+    resolution = YAHOO_TIMEFRAME_MAP.get(timeframe, timeframe)
     df = await client.get_forex_candles(symbol, resolution, start, now)
-    if timeframe == "4h" and resolution == "60min":
-        df = AlphaVantageClient.resample_to_4h(df)
+    if timeframe == "4h" and resolution == "60m":
+        df = YahooFinanceClient.resample_to_4h(df)
     return df
 
 
@@ -54,7 +54,7 @@ def daily_from_intraday(df: pd.DataFrame) -> pd.DataFrame:
     return daily
 
 
-async def process_pair(cfg: AppConfig, cache: Cache, notifier: TelegramNotifier, client: AlphaVantageClient, symbol: str, timeframe: str):
+async def process_pair(cfg: AppConfig, cache: Cache, notifier: TelegramNotifier, client: YahooFinanceClient, symbol: str, timeframe: str):
     try:
         candles = await fetch_candles(client, symbol, timeframe, bars=600)
         if candles.empty:
@@ -104,7 +104,7 @@ async def run_agent(args):
     await cache.init()
 
     notifier = TelegramNotifier(cfg.telegram.bot_token, cfg.telegram.chat_id)
-    client = AlphaVantageClient(cfg.alpha_vantage.api_key, cfg.alpha_vantage.base_url)
+    client = YahooFinanceClient()
 
     try:
         while True:
@@ -131,7 +131,7 @@ async def run_agent(args):
 
 async def run_backtest(args):
     cfg = load_config(args.config)
-    client = AlphaVantageClient(cfg.alpha_vantage.api_key, cfg.alpha_vantage.base_url)
+    client = YahooFinanceClient()
     try:
         for tf_job in cfg.timeframes:
             tf = tf_job.timeframe

@@ -21,10 +21,6 @@ telegram:
   bot_token: ""
   chat_id: ""
   message_cooldown_minutes: 60
-alpha_vantage:
-  # Лучше задавать через переменную окружения ALPHAVANTAGE_API_KEY
-  api_key: "VIQKGO6OYHCYRW6P"
-  base_url: "https://www.alphavantage.co"
 # Порог для тренда по ADX
 adx_threshold: 20.0
 # RSI уровни

@@ -1,6 +1,6 @@
 ### Forex Signal Agent
 
-Асинхронный агент-оповещатель по форекс-парам: получает OHLCV данные из Finnhub, анализирует индикаторы (EMA20/50, ADX, MACD, RSI), уровни классических пивотов и отправляет уведомления в Telegram. Не является торговым советником — сообщает о «движении» на рынке.
+Асинхронный агент-оповещатель по форекс-парам: получает OHLCV данные из Yahoo Finance, анализирует индикаторы (EMA20/50, ADX, MACD, RSI), уровни классических пивотов и отправляет уведомления в Telegram. Не является торговым советником — сообщает о «движении» на рынке.
 
 Стек: Python, asyncio, Pandas, TA-Lib, httpx, SQLite (кеш), Docker, docker-compose.
 
@@ -15,14 +15,13 @@
 #### Конфигурация
 Скопируйте и отредактируйте config.yaml. Основные параметры:
 - timezone: Europe/Moscow
-- pairs: список символов Finnhub для форекса, например OANDA:EUR_USD
+- pairs: список форекс-символов в формате OANDA:BASE_QUOTE (например, OANDA:EUR_USD). Внутри агент преобразует их в тикеры Yahoo вида BASEQUOTE=X (например, EURUSD=X).
 - timeframes: список заданий {timeframe: "5", poll_interval_seconds: 60}
 - telegram: bot_token, chat_id, message_cooldown_minutes
-- finnhub: api_key (лучше задавать через переменные окружения)
+- провайдер данных: Yahoo Finance (ключ не требуется)
 - пороги ADX и RSI, включение бэктеста, путь к SQLite
 
 Переменные окружения приоритетнее:
-- FINNHUB_API_KEY
 - TELEGRAM_BOT_TOKEN
 - TELEGRAM_CHAT_ID
 - SQLITE_PATH
@@ -42,9 +41,8 @@ forex-signal-agent --config config.yaml --backtest
 #### Docker
 Собрать и запустить через docker-compose:
 ```
-export FINNHUB_API_KEY=... \
-       TELEGRAM_BOT_TOKEN=... \
-       TELEGRAM_CHAT_ID=... 
+export TELEGRAM_BOT_TOKEN=... \
+       TELEGRAM_CHAT_ID=...
 
 docker compose up -d --build
 ```
