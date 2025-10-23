@@ -62,19 +62,33 @@ class YahooFinanceClient:
         end_dt = datetime.fromtimestamp(end_ts, tz=timezone.utc)
 
         def _download():
-            df = yf.download(
-                tickers=ticker,
-                interval=interval,
-                start=start_dt,
-                end=end_dt,
-                progress=False,
-                auto_adjust=True,
-                group_by="column",
-            )
+            # Yahoo intraday data has lookback caps. Prefer period for intraday intervals.
+            is_daily = interval == "1d"
+            kwargs = {
+                "tickers": ticker,
+                "interval": interval,
+                "progress": False,
+                "auto_adjust": True,
+                "group_by": "column",
+            }
+            if is_daily:
+                kwargs.update({"start": start_dt, "end": end_dt})
+            else:
+                # Compute requested duration (days) and cap by Yahoo limits
+                requested_days = max(1, int((end_dt - start_dt).total_seconds() // 86400) + 1)
+                if interval == "1m":
+                    cap_days = 7
+                else:
+                    # 2m/5m/15m/30m/60m typically allow up to ~60 days
+                    cap_days = 60
+                period_days = max(1, min(requested_days, cap_days))
+                kwargs.update({"period": f"{period_days}d"})
+            df = yf.download(**kwargs)
+
             if df is None or len(df) == 0:
                 return pd.DataFrame(columns=["o", "h", "l", "c", "v"]).set_index(pd.DatetimeIndex([], name="datetime"))
 
-            # If MultiIndex (can happen with some yfinance versions), collapse to the ticker level
+            # Если MultiIndex (может случиться с некоторыми версиями yfinance), свернуть до уровня тикера
             if isinstance(df.columns, pd.MultiIndex):
                 try:
                     if ticker in df.columns.get_level_values(0):
@@ -83,7 +97,7 @@ class YahooFinanceClient:
                         first = df.columns.get_level_values(0)[0]
                         df = df.xs(first, axis=1, level=0, drop_level=True)
                 except Exception:
-                    # As a fallback, try to flatten by taking the second level names
+                    # В качестве запасного варианта попробует сделать выравнивание, взяв имена второго уровня.
                     df.columns = [str(c[-1]) for c in df.columns]
 
             # Build case-insensitive column map
