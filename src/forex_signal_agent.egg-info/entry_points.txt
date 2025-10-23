@@ -1,0 +1,2 @@
+[console_scripts]
+forex-signal-agent = forex_signal_agent.main:main

@@ -1,0 +1,16 @@
+version: "3.9"
+services:
+  agent:
+    build: .
+    container_name: forex-signal-agent
+    restart: unless-stopped
+    environment:
+      - TZ=Europe/Moscow
+      - FINNHUB_API_KEY=${FINNHUB_API_KEY}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
+      - SQLITE_PATH=/app/data/cache.db
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - ./data:/app/data
+    command: ["forex-signal-agent", "--config", "/app/config.yaml"]

@@ -1,0 +1,15 @@
+Metadata-Version: 2.4
+Name: forex-signal-agent
+Version: 0.1.0
+Summary: Async Forex market movement notifier using Finnhub, Pandas, and TA-Lib with Telegram alerts
+Requires-Python: >=3.11
+Requires-Dist: pandas>=2.2
+Requires-Dist: numpy>=1.26
+Requires-Dist: httpx>=0.27.0
+Requires-Dist: pydantic>=2.7
+Requires-Dist: APScheduler>=3.10
+Requires-Dist: python-dateutil>=2.9
+Requires-Dist: pytz>=2024.1
+Requires-Dist: aiosqlite>=0.20.0
+Requires-Dist: PyYAML>=6.0.2
+Requires-Dist: TA-Lib>=0.4.28
