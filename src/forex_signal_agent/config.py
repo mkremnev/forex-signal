@@ -60,6 +60,24 @@ def load_config(path: Optional[str] = None) -> AppConfig:
     cfg.finnhub.api_key = os.getenv("FINNHUB_API_KEY", cfg.finnhub.api_key)
     cfg.sqlite_path = os.getenv("SQLITE_PATH", cfg.sqlite_path)
 
+    # Normalize timeframes to dataclass instances
+    normalized_tfs: List[TimeframeJob] = []
+    for item in cfg.timeframes or []:
+        if isinstance(item, TimeframeJob):
+            normalized_tfs.append(item)
+        elif isinstance(item, dict):
+            tf = str(item.get("timeframe", "5"))
+            try:
+                poll = int(item.get("poll_interval_seconds", 60))
+            except (TypeError, ValueError):
+                poll = 60
+            normalized_tfs.append(TimeframeJob(timeframe=tf, poll_interval_seconds=poll))
+        else:
+            # allow simple values like "5" or 5
+            normalized_tfs.append(TimeframeJob(timeframe=str(item), poll_interval_seconds=60))
+    if normalized_tfs:
+        cfg.timeframes = normalized_tfs
+
     return cfg
 
 

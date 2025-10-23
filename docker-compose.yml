@@ -4,6 +4,8 @@ services:
     build: .
     container_name: forex-signal-agent
     restart: unless-stopped
+    env_file:
+      - .env
     environment:
       - TZ=Europe/Moscow
       - FINNHUB_API_KEY=${FINNHUB_API_KEY}
