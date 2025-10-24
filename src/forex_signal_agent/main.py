@@ -13,7 +13,7 @@ from .telegram_notifier import TelegramNotifier
 from .sqlite_cache import Cache
 from .analyzer import analyze_pair, Event
 
-logging.basicConfig(level=logging.INFO, filename="agent.log", format="%(asctime)s - %(levelname)s - %(message)s")
+logging.basicConfig(level=logging.INFO, filename="logs/agent.log", format="%(asctime)s - %(levelname)s - %(message)s")
 
 
 def _timeframe_to_seconds(tf: str) -> int:

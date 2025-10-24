@@ -14,5 +14,5 @@ services:
     volumes:
       - ./config.yaml:/app/config.yaml:ro
       - ./data:/app/data
-      - ./agent.log:/app/logs/agent.log:rw
+      - ./logs:/app/logs
     command: ["forex-signal-agent", "--config", "/app/config.yaml"]
