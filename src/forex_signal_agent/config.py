@@ -14,12 +14,6 @@ class TelegramConfig:
 
 
 @dataclass
-class AlphaVantageConfig:
-    api_key: str = ""
-    base_url: str = "https://www.alphavantage.co"
-
-
-@dataclass
 class TimeframeJob:
     timeframe: str = "5"
     poll_interval_seconds: int = 60
@@ -34,10 +28,9 @@ class BacktestConfig:
 @dataclass
 class AppConfig:
     timezone: str = "Europe/Moscow"
-    pairs: List[str] = field(default_factory=lambda: ["OANDA:EUR_USD", "OANDA:GBP_USD", "OANDA:USD_JPY"])
+    pairs: List[str] = field(default_factory=lambda: ["EUR_USD", "GBP_USD", "USD_JPY"])
     timeframes: List[TimeframeJob] = field(default_factory=lambda: [TimeframeJob(timeframe="5", poll_interval_seconds=60)])
     telegram: TelegramConfig = field(default_factory=TelegramConfig)
-    alpha_vantage: AlphaVantageConfig = field(default_factory=AlphaVantageConfig)
     adx_threshold: float = 20.0
     rsi_overbought: float = 70.0
     rsi_oversold: float = 30.0
@@ -57,7 +50,6 @@ def load_config(path: Optional[str] = None) -> AppConfig:
     # env overrides
     cfg.telegram.bot_token = os.getenv("TELEGRAM_BOT_TOKEN", cfg.telegram.bot_token)
     cfg.telegram.chat_id = os.getenv("TELEGRAM_CHAT_ID", cfg.telegram.chat_id)
-    cfg.alpha_vantage.api_key = os.getenv("ALPHAVANTAGE_API_KEY", cfg.alpha_vantage.api_key)
     cfg.sqlite_path = os.getenv("SQLITE_PATH", cfg.sqlite_path)
 
     # Normalize timeframes to dataclass instances

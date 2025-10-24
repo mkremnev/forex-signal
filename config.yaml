@@ -1,20 +1,17 @@
 # Конфигурация Forex Signal Agent
 timezone: Europe/Moscow
 pairs:
-  - OANDA:EUR_USD
-  - OANDA:GBP_USD
-  - OANDA:USD_JPY
-  - OANDA:EUR_GBP
-  - OANDA:GBP_CHF
-  - OANDA:USD_CAD
-  - OANDA:XAU_USD
+  - EUR_USD
+  - GBP_USD
+  - EUR_GBP
+  - GBP_CHF
+  - USD_CAD
+  - XAU_USD
 # Список заданий по таймфреймам
 # resolution: 1,5,15,30,60,1h,4h,D
 # poll_interval_seconds — как часто опрашивать API (подбирайте под таймфрейм и лимиты API)
 timeframes:
-  - timeframe: "5"
-    poll_interval_seconds: 60
-  - timeframe: "15"
+  - timeframe: "4h"
     poll_interval_seconds: 180
 telegram:
   # Лучше задавать через переменные окружения TELEGRAM_BOT_TOKEN и TELEGRAM_CHAT_ID

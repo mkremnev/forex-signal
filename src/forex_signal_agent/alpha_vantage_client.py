@@ -48,7 +48,7 @@ class AlphaVantageClient:
         if resolution == "D":
             # Use FX_DAILY
             params = {
-                "function": "FX_DAILY",
+                "function": "TIME_SERIES_INTRADAY",
                 "from_symbol": from_sym,
                 "to_symbol": to_sym,
                 "outputsize": "full",
@@ -58,7 +58,7 @@ class AlphaVantageClient:
             r = await self._client.get("/query", params=params)
             r.raise_for_status()
             data = r.json()
-            ts_key = next((k for k in data.keys() if k.startswith("Time Series FX")), None)
+            ts_key = next((k for k in data.keys() if k.startswith("Time Series")), None)
             if not ts_key:
                 return pd.DataFrame(columns=["o", "h", "l", "c", "v"])  # Alpha Vantage FX daily has no volume
             ts = data.get(ts_key, {})
@@ -82,18 +82,16 @@ class AlphaVantageClient:
         else:
             # Intraday via FX_INTRADAY
             params = {
-                "function": "FX_INTRADAY",
-                "from_symbol": from_sym,
-                "to_symbol": to_sym,
+                "function": "TIME_SERIES_INTRADAY",
+                "symbol": from_sym,
                 "interval": resolution,  # e.g., 5min
                 "outputsize": "full",
-                "apikey": self.api_key,
-                "datatype": "json",
+                "apikey": self.api_key
             }
             r = await self._client.get("/query", params=params)
             r.raise_for_status()
             data = r.json()
-            ts_key = next((k for k in data.keys() if k.startswith("Time Series FX")), None)
+            ts_key = next((k for k in data.keys() if k.startswith("Time Series")), None)
             if not ts_key:
                 return pd.DataFrame(columns=["o", "h", "l", "c", "v"])  # empty
             ts = data.get(ts_key, {})
@@ -152,11 +150,11 @@ class AlphaVantageClient:
     def resample_to_4h(df: pd.DataFrame) -> pd.DataFrame:
         if df.empty:
             return df
-        o = df["o"].resample("4H").first()
-        h = df["h"].resample("4H").max()
-        l = df["l"].resample("4H").min()
-        c = df["c"].resample("4H").last()
-        v = df["v"].resample("4H").sum()
+        o = df["o"].resample("4h").first()
+        h = df["h"].resample("4h").max()
+        l = df["l"].resample("4h").min()
+        c = df["c"].resample("4h").last()
+        v = df["v"].resample("4h").sum()
         out = pd.concat([o, h, l, c, v], axis=1)
         out.columns = ["o", "h", "l", "c", "v"]
         return out.dropna()

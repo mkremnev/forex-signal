@@ -1,14 +1,15 @@
 README.md
 pyproject.toml
 src/forex_signal_agent/__init__.py
+src/forex_signal_agent/alpha_vantage_client.py
 src/forex_signal_agent/analyzer.py
 src/forex_signal_agent/config.py
-src/forex_signal_agent/finnhub_client.py
 src/forex_signal_agent/indicators.py
 src/forex_signal_agent/main.py
 src/forex_signal_agent/pivots.py
 src/forex_signal_agent/sqlite_cache.py
 src/forex_signal_agent/telegram_notifier.py
+src/forex_signal_agent/yahoo_finance_client.py
 src/forex_signal_agent.egg-info/PKG-INFO
 src/forex_signal_agent.egg-info/SOURCES.txt
 src/forex_signal_agent.egg-info/dependency_links.txt

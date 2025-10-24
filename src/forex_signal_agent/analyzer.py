@@ -20,6 +20,7 @@ def analyze_pair(df: pd.DataFrame, daily_df: pd.DataFrame, symbol: str, adx_thre
     events: List[Event] = []
     if df.empty:
         return events
+    # Подготовка индикаторов
     ind = compute_indicators(df)
     last = ind.iloc[-1]
 

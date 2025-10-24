@@ -1,8 +1,11 @@
 from __future__ import annotations
+from typing import Optional
 
 import httpx
-import asyncio
-from typing import Optional
+import logging
+from httpx import HTTPStatusError, HTTPError
+
+logger = logging.getLogger(__name__)
 
 
 class TelegramNotifier:
@@ -25,5 +28,15 @@ class TelegramNotifier:
         }
         if parse_mode:
             payload["parse_mode"] = parse_mode
-        r = await self._client.post(url, json=payload)
-        r.raise_for_status()
+            
+        try:
+            logger.info(f"""Sending message to Telegram... - /n{payload}""")
+            r = await self._client.post(url, json=payload)
+            r.raise_for_status()
+        except HTTPStatusError as e:
+            # Обработка HTTP-ошибок (например, 400, 500 и т.д.)
+            print('error', e)
+            logger.error(f"Network error while sending message to Telegram: {e}")
+        except HTTPError as e:
+            print('error', e)
+            logger.error(f"Network error while sending message to Telegram: {e}")

@@ -1,18 +1,19 @@
 from __future__ import annotations
-
+import logging
 import argparse
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import List
 
 import pandas as pd
-import pytz
 
 from .config import load_config, AppConfig
 from .yahoo_finance_client import YahooFinanceClient, YAHOO_TIMEFRAME_MAP
 from .telegram_notifier import TelegramNotifier
 from .sqlite_cache import Cache
 from .analyzer import analyze_pair, Event
+
+logging.basicConfig(level=logging.INFO, filename="agent.log", format="%(asctime)s - %(levelname)s - %(message)s")
 
 
 def _timeframe_to_seconds(tf: str) -> int:
@@ -56,6 +57,7 @@ def daily_from_intraday(df: pd.DataFrame) -> pd.DataFrame:
 
 async def process_pair(cfg: AppConfig, cache: Cache, notifier: TelegramNotifier, client: YahooFinanceClient, symbol: str, timeframe: str):
     try:
+        print("🔄 Обработка пары", symbol, timeframe)
         candles = await fetch_candles(client, symbol, timeframe, bars=600)
         if candles.empty:
             return
@@ -73,7 +75,7 @@ async def process_pair(cfg: AppConfig, cache: Cache, notifier: TelegramNotifier,
                     msg = f"⚡ {symbol}: резкое тиковое движение {direction} на {diff*100:.2f}% относительно закрытия последней свечи."
                     events.append(Event(kind="tick_spike", message=msg, importance=2))
 
-        # cooldown check
+        # проверка времени восстановления
         cooldown_sec = cfg.telegram.message_cooldown_minutes * 60
         now_ts = int(datetime.now(tz=timezone.utc).timestamp())
         for ev in events:
@@ -97,8 +99,8 @@ async def hourly_summary(cfg: AppConfig, notifier: TelegramNotifier, cache: Cach
 
 
 async def run_agent(args):
+    logging.info(f"Starting Forex Signal Agent with config: {args.config}")
     cfg = load_config(args.config)
-    tz = pytz.timezone(cfg.timezone)
 
     cache = Cache(cfg.sqlite_path)
     await cache.init()
@@ -125,22 +127,33 @@ async def run_agent(args):
             sleep_for = max(1, interval - int(elapsed))
             await asyncio.sleep(sleep_for)
     finally:
+        logging.info("Stopping Forex Signal Agent...")
+        for task in asyncio.all_tasks():
+            if task is not asyncio.current_task():
+                task.cancel()
         await client.close()
         await notifier.close()
 
 
 async def run_backtest(args):
+    # Грузим конфиг и запускаем бэктест
     cfg = load_config(args.config)
+    # Инициализируем клиент Yahoo Finance
     client = YahooFinanceClient()
     try:
+        # Запускаем цикл бэктеста по таймфреймам
         for tf_job in cfg.timeframes:
             tf = tf_job.timeframe
+            # Запрашиваем данные для каждого символа
             for sym in cfg.pairs:
+                # Получаем свечи по таймфрейму и символу 1500 последних баров
                 df = await fetch_candles(client, sym, tf, bars=cfg.backtest.lookback_bars)
                 if df.empty:
                     print(f"{sym} {tf}: no data")
                     continue
+                # Подготавливаем данные для анализа (дневная свеча)
                 daily = daily_from_intraday(df)
+                # анализируем свечи
                 events = analyze_pair(df, daily, sym, cfg.adx_threshold, cfg.rsi_overbought, cfg.rsi_oversold)
                 print(f"Backtest {sym} {tf}: последние события: ")
                 for ev in events:
@@ -150,12 +163,22 @@ async def run_backtest(args):
 
 
 def main():
+    logging.info("Starting Forex Signal Agent...")
     parser = argparse.ArgumentParser(description="Forex Signal Agent")
     parser.add_argument("--config", default="config.yaml", help="Путь к YAML конфигу")
     parser.add_argument("--backtest", action="store_true", help="Запустить бэктест и выйти")
     args = parser.parse_args()
 
     if args.backtest:
+        logging.info("Starting Forex Signal Agent in backtest mode...")
         asyncio.run(run_backtest(args))
     else:
+        logging.info("Starting Forex Signal Agent in normal mode...")
         asyncio.run(run_agent(args))
+
+if __name__ == "__main__":
+    if __name__ == "__main__":
+        try:
+            main()
+        except KeyboardInterrupt:
+            logging.info("Agent stopped by user")

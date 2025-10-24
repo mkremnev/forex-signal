@@ -46,11 +46,11 @@ class YahooFinanceClient:
     def resample_to_4h(df: pd.DataFrame) -> pd.DataFrame:
         if df.empty:
             return df
-        o = df["o"].resample("4H").first()
-        h = df["h"].resample("4H").max()
-        l = df["l"].resample("4H").min()
-        c = df["c"].resample("4H").last()
-        v = df["v"].resample("4H").sum()
+        o = df["o"].resample("4h").first()
+        h = df["h"].resample("4h").max()
+        l = df["l"].resample("4h").min()
+        c = df["c"].resample("4h").last()
+        v = df["v"].resample("4h").sum()
         out = pd.concat([o, h, l, c, v], axis=1)
         out.columns = ["o", "h", "l", "c", "v"]
         return out.dropna()
@@ -62,12 +62,12 @@ class YahooFinanceClient:
         end_dt = datetime.fromtimestamp(end_ts, tz=timezone.utc)
 
         def _download():
-            # Choose download strategy: intraday uses period, daily uses start/end
+            # Выбор стратегии загрузки: период внутридневного использования, начало/конец ежедневного использования
             intraday_intervals = {"1m", "5m", "15m", "30m", "60m"}
             is_intraday = interval in intraday_intervals
 
             if is_intraday:
-                # Determine period respecting Yahoo limits
+                # Определить период, соблюдая лимиты Yahoo
                 total_seconds = max(1, int((end_dt - start_dt).total_seconds()))
                 days = (total_seconds + 86399) // 86400  # ceil to days
                 max_days = 7 if interval == "1m" else 60
@@ -125,7 +125,7 @@ class YahooFinanceClient:
                 # If still MultiIndex and we know which level has fields, group by that
                 if isinstance(df.columns, pd.MultiIndex) and field_level is not None:
                     try:
-                        df = df.groupby(level=field_level, axis=1).first()
+                        df = df.T.groupby(by=field_level).first()
                     except Exception:
                         df.columns = [str(c[-1]) for c in df.columns]
                 # If still MultiIndex, flatten by last level
@@ -142,7 +142,7 @@ class YahooFinanceClient:
                 key = colmap.get(name.lower())
                 if key is None:
                     return pd.Series(index=df.index, dtype="float64")
-                return pd.to_numeric(df[key], errors="coerce")
+                return pd.to_numeric(df[key])
 
             o = _pick("Open")
             h = _pick("High")
