@@ -20,17 +20,9 @@ YAHOO_TIMEFRAME_MAP = {
 }
 
 
-def _oanda_to_yahoo_symbol(symbol: str) -> str:
-    # Convert formats like "OANDA:EUR_USD" or "EUR_USD" or "EUR/USD" -> "EURUSD=X"
-    if ":" in symbol:
-        symbol = symbol.split(":", 1)[1]
-    symbol = symbol.replace("/", "_")
-    if "_" in symbol:
-        base, quote = symbol.split("_", 1)
-    else:
-        # attempt 3+3 split as fallback
-        base, quote = symbol[:3], symbol[3:]
-    return f"{base}{quote}=X"
+def _yahoo_symbol(symbol: str) -> str:
+    # Convert formats like "EUR_USD" or "EUR_USD" or "EUR/USD" -> "EURUSD=X"
+    return symbol.replace('_', '').replace(':X', '=X').replace(':F', '=F')
 
 
 class YahooFinanceClient:
@@ -56,7 +48,7 @@ class YahooFinanceClient:
         return out.dropna()
 
     async def get_forex_candles(self, symbol: str, resolution: str, start_ts: int, end_ts: int) -> pd.DataFrame:
-        ticker = _oanda_to_yahoo_symbol(symbol)
+        ticker = _yahoo_symbol(symbol)
         interval = resolution  # already mapped by caller using YAHOO_TIMEFRAME_MAP
         start_dt = datetime.fromtimestamp(start_ts, tz=timezone.utc)
         end_dt = datetime.fromtimestamp(end_ts, tz=timezone.utc)
@@ -165,7 +157,7 @@ class YahooFinanceClient:
         return df
 
     async def get_latest_quote(self, symbol: str) -> Optional[Tuple[datetime, float]]:
-        ticker = _oanda_to_yahoo_symbol(symbol)
+        ticker = _yahoo_symbol(symbol)
 
         def _last():
             t = yf.Ticker(ticker)

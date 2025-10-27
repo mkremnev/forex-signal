@@ -1,12 +1,12 @@
 # Конфигурация Forex Signal Agent
 timezone: Europe/Moscow
 pairs:
-  - EUR_USD
-  - GBP_USD
-  - EUR_GBP
-  - GBP_CHF
-  - USD_CAD
-  - XAU_USD
+  - EUR_USD:X
+  - GBP_USD:X
+  - EUR_GBP:X
+  - GBP_CHF:X
+  - USD_CAD:X
+  - G_C:F
 # Список заданий по таймфреймам
 # resolution: 1,5,15,30,60,1h,4h,D
 # poll_interval_seconds — как часто опрашивать API (подбирайте под таймфрейм и лимиты API)
