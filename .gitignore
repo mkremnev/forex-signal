@@ -1,2 +1,4 @@
 forex_signal_agent.egg-info/**/*
 ./agent.log
+logs/agent.log
+logs/
