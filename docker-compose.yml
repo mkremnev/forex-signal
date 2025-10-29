@@ -1,9 +1,13 @@
-version: "3.9"
 services:
   agent:
-    build: .
+    build: 
+      context: .
+      args:
+        user_uid: "$USER_UID"
+        user_gid: "$USER_GID"
     container_name: forex-signal-agent
     restart: unless-stopped
+    
     env_file:
       - .env
     environment:

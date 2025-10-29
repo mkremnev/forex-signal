@@ -23,10 +23,9 @@ RUN pip install --upgrade pip \
     && pip install .
 
 # Create data dir for sqlite
-RUN mkdir -p /app/data \
-    && useradd -m appuser \
-    && chown -R appuser:appuser /app
+RUN mkdir -p /app/{data,logs} && chown -R $user_uid:$user_uid /app
 
-USER appuser
+ARG user_uid
+USER $user_uid
 
 CMD ["forex-signal-agent", "--config", "/app/config.yaml"]
