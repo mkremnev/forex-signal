@@ -18,7 +18,6 @@ WORKDIR /app
 COPY pyproject.toml /app/
 COPY src /app/src
 COPY config.yaml /app/config.yaml
-COPY /logs/agent.log /app/logs/agent.log
 
 RUN pip install --upgrade pip \
     && pip install .
