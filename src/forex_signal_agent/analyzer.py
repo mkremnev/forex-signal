@@ -12,6 +12,7 @@ from .pivots import classical_pivots
 PIVOT_PROXIMITY_THRESHOLD = 0.0005  # 0.05% proximity threshold for pivot levels
 MIN_DAILY_BARS_FOR_PIVOTS = 2
 TREND_IMPORTANCE = 1
+TREND_IMPORTANCE_STRENGTH = 2
 SIGNAL_IMPORTANCE = 1
 MAJOR_PIVOT_IMPORTANCE = 2
 MINOR_PIVOT_IMPORTANCE = 1
@@ -139,7 +140,7 @@ def _analyze_trend_continuation(
         events.append(Event(
             kind="trend_strength",
             message=f"💪 {symbol}: Укрепление {trend_direction} тренда (ADX↑ {prev_bar['adx']:.1f}→{last_bar['adx']:.1f}).",
-            importance=TREND_IMPORTANCE
+            importance=TREND_IMPORTANCE_STRENGTH
         ))
 
     return events
