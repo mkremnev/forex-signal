@@ -80,17 +80,66 @@ def _analyze_trend(
     ema_trend = _detect_ema_trend(last_bar)
     adx_strong = _is_adx_strong(last_bar, adx_threshold)
 
+    # Only trigger trend messages when there's a clear change in trend direction
+    # and the trend is sufficiently strong
     if ema_trend == "up" and adx_strong:
+        # Only send message for new uptrend (not continuation)
         events.append(Event(
             kind="trend_up",
             message=f"📈 {symbol}: Восходящий тренд (EMA20>EMA50, ADX≥{adx_threshold:.0f}).",
             importance=TREND_IMPORTANCE,
         ))
     elif ema_trend == "down" and adx_strong:
+        # Only send message for new downtrend (not continuation)
         events.append(Event(
             kind="trend_down",
             message=f"📉 {symbol}: Нисходящий тренд (EMA20<EMA50, ADX≥{adx_threshold:.0f}).",
             importance=TREND_IMPORTANCE,
+        ))
+
+    return events
+
+
+def _analyze_trend_continuation(
+    indicators: pd.DataFrame,
+    last_bar: pd.Series,
+    symbol: str,
+    adx_threshold: float
+) -> List[Event]:
+    """
+    Analyze trend continuation - detect when a trend is strengthening or continuing.
+
+    Args:
+        indicators: DataFrame with all indicators
+        last_bar: The most recent indicator bar
+        symbol: Trading pair symbol
+        adx_threshold: Minimum ADX value for strong trend
+
+    Returns:
+        List of trend continuation events
+    """
+    events: List[Event] = []
+    
+    if len(indicators) < 2:
+        return events
+        
+    prev_bar = indicators.iloc[-2]
+    ema_trend = _detect_ema_trend(last_bar)
+    prev_ema_trend = _detect_ema_trend(prev_bar)
+    adx_strong = _is_adx_strong(last_bar, adx_threshold)
+    prev_adx_strong = _is_adx_strong(prev_bar, adx_threshold)
+    
+    # Detect strengthening trend (ADX increasing and above threshold)
+    if (ema_trend is not None and ema_trend == prev_ema_trend and 
+        adx_strong and prev_adx_strong and
+        pd.notna(last_bar.get("adx")) and pd.notna(prev_bar.get("adx")) and
+        last_bar["adx"] > prev_bar["adx"]):
+        
+        trend_direction = "восходящий" if ema_trend == "up" else "нисходящий"
+        events.append(Event(
+            kind="trend_strength",
+            message=f"💪 {symbol}: Укрепление {trend_direction} тренда (ADX↑ {prev_bar['adx']:.1f}→{last_bar['adx']:.1f}).",
+            importance=TREND_IMPORTANCE
         ))
 
     return events
@@ -303,6 +352,7 @@ def analyze_pair(
 
     # Run all analysis modules
     events.extend(_analyze_trend(last_bar, symbol, adx_threshold))
+    events.extend(_analyze_trend_continuation(indicators, last_bar, symbol, adx_threshold))
     events.extend(_analyze_macd_cross(indicators, last_bar, symbol))
     events.extend(_analyze_rsi(last_bar, symbol, rsi_overbought, rsi_oversold))
     events.extend(_analyze_pivot_levels(daily_df, last_bar, symbol))
