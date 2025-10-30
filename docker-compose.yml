@@ -3,8 +3,8 @@ services:
     build: 
       context: .
       args:
-        user_uid: "$USER_UID"
-        user_gid: "$USER_GID"
+        user_uid: "${USER_UID:-0}"
+        user_gid: "${USER_GID:-0}"
     container_name: forex-signal-agent
     restart: unless-stopped
     
@@ -14,7 +14,6 @@ services:
       - TZ=Europe/Moscow
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
-      - SQLITE_PATH=/app/data/cache.db
     volumes:
       - ./config.yaml:/app/config.yaml:ro
       - ./data:/app/data
