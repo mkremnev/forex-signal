@@ -92,9 +92,13 @@ async def process_pair(cfg: AppConfig, cache: Cache, notifier: TelegramNotifier,
         now_ts = int(datetime.now(tz=timezone.utc).timestamp())
         for ev in events:
             last_ts = await cache.get_last_sent(symbol, timeframe, ev.kind)
+            logger.debug(f"Cooldown check for {symbol} {timeframe} {ev.kind}: last_ts={last_ts}, now_ts={now_ts}, cooldown={cooldown_sec}, importance={ev.importance}")
             if last_ts is None or (now_ts - last_ts) >= cooldown_sec or ev.importance >= 2:
+                logger.info(f"Sending message for {symbol} {timeframe} {ev.kind} (cooldown check passed)")
                 await notifier.send_message(f"{ev.message} (TF: {timeframe})")
                 await cache.set_last_sent(symbol, timeframe, ev.kind, now_ts)
+            else:
+                logger.info(f"Message skipped for {symbol} {timeframe} {ev.kind} (cooldown not met)")
     except DataProviderException as e:
         logger.error(f"Data provider error for {symbol} {timeframe}: {e}")
         await notifier.send_message(f"⚠️ Ошибка получения данных {symbol} {timeframe}: {e}")
