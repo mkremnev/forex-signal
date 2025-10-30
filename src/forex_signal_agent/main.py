@@ -92,11 +92,18 @@ async def process_pair(cfg: AppConfig, cache: Cache, notifier: TelegramNotifier,
         now_ts = int(datetime.now(tz=timezone.utc).timestamp())
         for ev in events:
             last_ts = await cache.get_last_sent(symbol, timeframe, ev.kind)
-            logger.debug(f"Cooldown check for {symbol} {timeframe} {ev.kind}: last_ts={last_ts}, now_ts={now_ts}, cooldown={cooldown_sec}, importance={ev.importance}")
-            if last_ts is None or (now_ts - last_ts) >= cooldown_sec or ev.importance >= 2:
+            time_diff = now_ts - (last_ts or 0)
+            cooldown_met = last_ts is None or time_diff >= cooldown_sec
+            importance_check = ev.importance >= 2
+            should_send = cooldown_met or importance_check
+            
+            logger.debug(f"Cooldown check for {symbol} {timeframe} {ev.kind}: last_ts={last_ts}, now_ts={now_ts}, time_diff={time_diff}, cooldown={cooldown_sec}, cooldown_met={cooldown_met}, importance={ev.importance}, importance_check={importance_check}, should_send={should_send}")
+            
+            if should_send:
                 logger.info(f"Sending message for {symbol} {timeframe} {ev.kind} (cooldown check passed)")
                 await notifier.send_message(f"{ev.message} (TF: {timeframe})")
                 await cache.set_last_sent(symbol, timeframe, ev.kind, now_ts)
+                logger.debug(f"Message sent and cache updated for {symbol} {timeframe} {ev.kind}")
             else:
                 logger.info(f"Message skipped for {symbol} {timeframe} {ev.kind} (cooldown not met)")
     except DataProviderException as e:
@@ -139,6 +146,7 @@ class Application:
         try:
             self.config = load_config(self.config_path)
             
+            self.logger.info(f"Initializing cache with path: {self.config.sqlite_path}")
             self.cache = Cache(self.config.sqlite_path)
             await self.cache.init()
             
