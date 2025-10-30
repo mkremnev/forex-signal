@@ -1,12 +1,19 @@
 README.md
 pyproject.toml
+src/__init__.py
 src/forex_signal_agent/__init__.py
 src/forex_signal_agent/alpha_vantage_client.py
 src/forex_signal_agent/analyzer.py
 src/forex_signal_agent/config.py
+src/forex_signal_agent/config_validation.py
+src/forex_signal_agent/data_manager.py
+src/forex_signal_agent/exceptions.py
+src/forex_signal_agent/health.py
 src/forex_signal_agent/indicators.py
+src/forex_signal_agent/logging_config.py
 src/forex_signal_agent/main.py
 src/forex_signal_agent/pivots.py
+src/forex_signal_agent/retry_utils.py
 src/forex_signal_agent/sqlite_cache.py
 src/forex_signal_agent/telegram_notifier.py
 src/forex_signal_agent/yahoo_finance_client.py
@@ -16,3 +23,4 @@ src/forex_signal_agent.egg-info/dependency_links.txt
 src/forex_signal_agent.egg-info/entry_points.txt
 src/forex_signal_agent.egg-info/requires.txt
 src/forex_signal_agent.egg-info/top_level.txt
+tests/test_basic.py

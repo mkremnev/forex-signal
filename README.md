@@ -2,143 +2,180 @@
 
 Forex Signal Agent — это асинхронное приложение на Python, предназначенное для автоматического мониторинга валютных пар на рынке Форекс и отправки торговых сигналов через Telegram-бота. Агент анализирует рыночные данные с использованием технических индикаторов (EMA, MACD, RSI, ADX) и отправляет уведомления о значимых событиях и торговых сигналах.
 
-## Архитектура проекта
+## 🚀 Features
 
-- **main.py**: Основной модуль приложения, содержащий логику основного цикла работы агента и бэктеста
-- **config.py**: Управление конфигурацией приложения с поддержкой YAML и переменных окружения
-- **analyzer.py**: Модуль анализа рыночных данных и обнаружения торговых сигналов
-- **indicators.py**: Расчет технических индикаторов с использованием библиотеки TA-Lib
-- **yahoo_finance_client.py**: Клиент для получения рыночных данных с Yahoo Finance
-- **telegram_notifier.py**: Отправка уведомлений через Telegram-бота
-- **sqlite_cache.py**: Кэширование отправленных сигналов для предотвращения дубликатов
+- **Multi-timeframe Analysis**: Monitor multiple currency pairs across different timeframes simultaneously
+- **Technical Indicators**: EMA20/50, MACD, RSI, ADX analysis with trend detection
+- **Pivot Levels**: Classical pivot level detection and proximity alerts
+- **Telegram Notifications**: Real-time alerts via Telegram bot
+- **Duplicate Prevention**: Built-in cooldown system to prevent spam
+- **Backtesting**: Historical analysis capability for signal validation
+- **Async Processing**: Efficient concurrent processing of multiple pairs
 
-## Ключевые компоненты
+## 📋 Prerequisites
 
-1. **Конфигурация**:
-   - Загружается из YAML-файла (по умолчанию config.yaml)
-   - Поддерживает переопределение через переменные окружения
-   - Содержит настройки валютных пар, таймфреймов, индикаторов и Telegram-бота
+- Python 3.11+
+- TA-Lib library (for technical indicators)
 
-2. **Система получения данных**:
-   - Использует Yahoo Finance через библиотеку yfinance
-   - Поддерживает множество таймфреймов: 1m, 5m, 15m, 30m, 60m, 1h, 4h, 1d
-   - Асинхронная загрузка данных для нескольких валютных пар
+## 🛠️ Installation
 
-3. **Анализатор сигналов**:
-   - Рассчитывает технические индикаторы: EMA20/50, MACD, RSI, ADX
-   - Обнаруживает тренды, пересечения индикаторов, уровни перекупленности/перепроданности
-   - Анализирует уровни классических поворотных точек (pivot levels)
-   - Обнаруживает резкие тиковые движения
+### Local Installation
 
-4. **Система уведомлений**:
-   - Отправка сигналов через Telegram-бота
-   - Поддержка различных уровней важности сообщений
-   - Механизм подавления дубликатов с настраиваемым интервалом
+1. Clone the repository:
+   ```bash
+   git clone <repository-url>
+   cd forex-signal-agent
+   ```
 
-5. **Система кэширования**:
-   - Использование SQLite базы данных для хранения истории отправленных сигналов
-   - Предотвращение дубликатов с учетом настраиваемого интервала времени
-   - Хранение метаданных для обеспечения уникальности уведомлений
+2. Create and activate virtual environment:
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+   ```
 
-### Функциональные возможности
+3. Install dependencies:
+   ```bash
+   pip install -e .
+   ```
 
-1. **Режим мониторинга**:
-   - Постоянный цикл проверки торговых сигналов
-   - Параллельный анализ нескольких валютных пар и таймфреймов
-   - Настройка интервалов проверки для каждого таймфрейма
+### Docker Installation
 
-2. **Режим бэктеста**:
-   - Исторический анализ сигналов на основе прошлых данных
-   - Возможность тестирования стратегии на исторических свечах
+1. Build and run with Docker Compose:
+   ```bash
+   docker-compose up -d --build
+   ```
 
-3. **Уведомления**:
-   - Различные типы сигналов: тренд, пересечения MACD, RSI, уровни pivot
-   - Резкие тиковые движения
-   - Ежечасные уведомления о работе агента
+## ⚙️ Configuration
 
-4. **Гибкая конфигурация**:
-   - Поддержка различных таймфреймов и валютных пар
-   - Настройка порогов индикаторов
-   - Возможность настройки интервалов опроса
+### Configuration File
 
-## Асинхронный агент-оповещатель по форекс-парам
+Edit `config.yaml` to customize the agent:
 
-Получает OHLCV данные из Yahoo Finance, анализирует индикаторы (EMA20/50, ADX, MACD, RSI), уровни классических пивотов и отправляет уведомления в Telegram. Не является торговым советником — сообщает о «движении» на рынке.
-
-Стек: Python, asyncio, Pandas, TA-Lib, httpx, SQLite (кеш), Docker, docker-compose.
-
-#### Возможности
-- Периодический опрос по заданным таймфреймам и парам.
-- Индикаторы: EMA(20/50), ADX(14), MACD(12,26,9), RSI(14).
-- Классические пивоты (уровни от предыдущего дня) и уведомления при касании.
-- Антиспам: не чаще N минут на событие/пару/таймфрейм (по умолчанию 60 минут), важные события проходят вне очереди.
-- Ежечасный «heartbeat» (настраивается).
-- Бэктест режима: анализ истории без отправки в Telegram.
-
-#### Конфигурация
-Скопируйте и отредактируйте config.yaml. Основные параметры:
-- timezone: Europe/Moscow
-- pairs: список форекс-символов в формате OANDA:BASE_QUOTE (например, OANDA:EUR_USD). Внутри агент преобразует их в тикеры Yahoo вида BASEQUOTE=X (например, EURUSD=X).
-- timeframes: список заданий {timeframe: "5", poll_interval_seconds: 60}
-- telegram: bot_token, chat_id, message_cooldown_minutes
-- провайдер данных: Yahoo Finance (ключ не требуется)
-- пороги ADX и RSI, включение бэктеста, путь к SQLite
-
-Переменные окружения приоритетнее:
-- TELEGRAM_BOT_TOKEN
-- TELEGRAM_CHAT_ID
-- SQLITE_PATH
-
-#### Локальный запуск (без Docker)
-1) Python 3.11+
-2) Установите зависимости: `pip install .`
-3) Запуск агента:
+```yaml
+timezone: Europe/Moscow
+pairs:
+  - EUR_USD:X
+  - GBP_USD:X
+  - EUR_GBP:X
+timeframes:
+  - timeframe: "4h"
+    poll_interval_seconds: 180
+telegram:
+  bot_token: ""  # Better set via TELEGRAM_BOT_TOKEN environment variable
+  chat_id: ""    # Better set via TELEGRAM_CHAT_ID environment variable
+  message_cooldown_minutes: 60
+adx_threshold: 20.0
+rsi_overbought: 70.0
+rsi_oversold: 30.0
+notify_hourly_summary: true
+backtest:
+  enabled: false
+  lookback_bars: 1500
+sqlite_path: ./data/cache.db
 ```
+
+### Environment Variables
+
+Override configuration with environment variables:
+
+- `TELEGRAM_BOT_TOKEN` - Telegram bot token
+- `TELEGRAM_CHAT_ID` - Telegram chat ID for notifications
+- `SQLITE_PATH` - Path to SQLite database file
+
+## 📊 Supported Indicators and Signals
+
+### Trend Detection
+- **EMA Cross**: EMA20 crossing EMA50 with ADX confirmation
+- **ADX Strength**: Strong trend detection using ADX values
+
+### Momentum Indicators
+- **MACD Cross**: Bullish and bearish MACD/Signal line crosses
+- **RSI Levels**: Overbought (>70) and oversold (<30) conditions
+
+### Pivot Level Analysis
+- **Classical Pivots**: S1-S3, P, R1-R3 levels from previous day
+- **Proximity Detection**: Alerts when price approaches pivot levels
+
+### Tick Analysis
+- **Sharp Movements**: Detection of >0.1% price movements between candle and tick
+
+## 🧪 Testing
+
+Run the test suite:
+
+```bash
+# Run all tests
+pytest
+
+# Run with coverage
+pytest --cov=src/ --cov-report=html
+
+# Run specific test category
+pytest tests/unit/
+pytest tests/integration/
+pytest tests/e2e/
+```
+
+## 🔒 Security Best Practices
+
+- Never commit Telegram bot tokens or other secrets to the repository
+- Use environment variables for sensitive configuration
+- Ensure proper access controls on deployment systems
+
+## 🤖 Usage Examples
+
+### Standard Monitoring
+```bash
 forex-signal-agent --config config.yaml
 ```
-4) Бэктест:
-```
+
+### Backtesting Mode
+```bash
 forex-signal-agent --config config.yaml --backtest
 ```
 
-#### Docker
-Собрать и запустить через docker-compose:
-```
-export TELEGRAM_BOT_TOKEN=... \
-       TELEGRAM_CHAT_ID=...
+## 📈 Performance Considerations
 
-docker compose up -d --build
-```
-Логи:
-```
-docker compose logs -f
-```
+- **API Limits**: Yahoo Finance has rate limits; adjust polling intervals accordingly
+- **Memory Usage**: Large datasets for analysis will increase memory consumption
+- **Processing Capacity**: Adjust the number of monitored pairs/timeframes based on system capacity
 
-#### Примечания
-- Таймфреймы поддерживаются: 1,5,15,30,60,1h,4h,D (4h формируется ресемплингом из 60m).
-- TA-Lib устанавливается из PyPI (доступны колеса для Linux). В Docker образе используется python:3.11-slim.
+## 🚨 Troubleshooting
 
-#### Безопасность
-Не храните токены в репозитории. Для секретов используйте переменные окружения или внешние секреты в Docker/Orchestrator.
+### Common Issues
 
-### Зависимости
-- pandas: для работы с финансовыми данными
-- yfinance: для получения данных с Yahoo Finance
-- TA-Lib: для расчета технических индикаторов
-- httpx: для работы с Telegram API
-- aiosqlite: для асинхронного доступа к кэшу
-- PyYAML: для работы с конфигурационными файлами
+1. **TA-Lib Installation**: If you encounter issues installing TA-Lib:
+   ```bash
+   # On macOS
+   brew install ta-lib
+   pip install TA-Lib
+   
+   # On Ubuntu
+   sudo apt-get install libta-lib0-dev
+   pip install TA-Lib
+   ```
 
-### Особенности реализации
-- Полностью асинхронная архитектура с использованием asyncio
-- Эффективная многозадачность с использованием asyncio.gather
-- Механизм дедупликации уведомлений на основе кэширования
-- Поддержка нескольких таймфреймов с разными интервалами проверки
-- Обработка исключений для обеспечения стабильной работы агента
+2. **Permission Errors**: Ensure the application has write access to the data and logs directories.
 
-### Запуск
-Агент может быть запущен в двух режимах:
-1. Режим мониторинга (по умолчанию): непрерывный анализ и отправка сигналов
-2. Режим бэктеста (--backtest): однократный анализ исторических данных
+3. **Network Issues**: The application requires internet connectivity to fetch market data.
 
-Проект представляет собой надежное решение для автоматического мониторинга рынка Форекс с возможностью быстрой настройки под конкретные торговые стратегии и отправки актуальных сигналов прямо в Telegram.
+### Monitoring and Logging
+
+- Check `logs/agent.log` for application logs
+- Database operations are logged and can be monitored for performance
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## 📄 License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## 📞 Support
+
+For support, please open an issue in the GitHub repository or contact us directly.

@@ -12,6 +12,8 @@ def compute_indicators(df: pd.DataFrame) -> pd.DataFrame:
     """
     if df.empty:
         return df.copy()
+    
+    # Ensure data is in float64 format for TA-Lib compatibility
     out = df.copy()
     close = out["c"].values.astype(float)
     high = out["h"].values.astype(float)

@@ -2,8 +2,11 @@ from __future__ import annotations
 import logging
 import argparse
 import asyncio
+import signal
+import sys
 from datetime import datetime, timezone
 from typing import List
+from contextlib import asynccontextmanager
 
 import pandas as pd
 
@@ -12,8 +15,12 @@ from .yahoo_finance_client import YahooFinanceClient, YAHOO_TIMEFRAME_MAP
 from .telegram_notifier import TelegramNotifier
 from .sqlite_cache import Cache
 from .analyzer import analyze_pair, Event
+from .exceptions import DataProviderException, AnalysisException, NotificationException
+from .logging_config import setup_logging
 
-logging.basicConfig(level=logging.INFO, filename="logs/agent.log", format="%(asctime)s - %(levelname)s - %(message)s")
+# Set up structured logging
+setup_logging("INFO", "logs/agent.log")
+logger = logging.getLogger(__name__)
 
 
 def _timeframe_to_seconds(tf: str) -> int:
@@ -56,13 +63,18 @@ def daily_from_intraday(df: pd.DataFrame) -> pd.DataFrame:
 
 
 async def process_pair(cfg: AppConfig, cache: Cache, notifier: TelegramNotifier, client: YahooFinanceClient, symbol: str, timeframe: str):
+    """Process a single pair with comprehensive error handling"""
     try:
-        print("🔄 Обработка пары", symbol, timeframe)
+        logger.info(f"🔄 Обработка пары {symbol} {timeframe}")
+        
         candles = await fetch_candles(client, symbol, timeframe, bars=600)
         if candles.empty:
+            logger.warning(f"No data returned for {symbol} on {timeframe}")
             return
+            
         daily = daily_from_intraday(candles)
         events = analyze_pair(candles, daily, symbol, cfg.adx_threshold, cfg.rsi_overbought, cfg.rsi_oversold)
+        
         # Дополнительно: тиковое движение относительно последнего закрытия свечи
         last_close = float(candles.iloc[-1]["c"]) if not candles.empty else None
         tick = await client.get_latest_quote(symbol)
@@ -81,10 +93,20 @@ async def process_pair(cfg: AppConfig, cache: Cache, notifier: TelegramNotifier,
         for ev in events:
             last_ts = await cache.get_last_sent(symbol, timeframe, ev.kind)
             if last_ts is None or (now_ts - last_ts) >= cooldown_sec or ev.importance >= 2:
-                await notifier.send_message(f"{ev.message} (TF: {timeframe}м)")
+                await notifier.send_message(f"{ev.message} (TF: {timeframe})")
                 await cache.set_last_sent(symbol, timeframe, ev.kind, now_ts)
+    except DataProviderException as e:
+        logger.error(f"Data provider error for {symbol} {timeframe}: {e}")
+        await notifier.send_message(f"⚠️ Ошибка получения данных {symbol} {timeframe}: {e}")
+    except AnalysisException as e:
+        logger.error(f"Analysis error for {symbol} {timeframe}: {e}")
+        await notifier.send_message(f"⚠️ Ошибка анализа {symbol} {timeframe}: {e}")
+    except NotificationException as e:
+        logger.error(f"Notification error for {symbol} {timeframe}: {e}")
+        # Don't send another notification since the notification system itself failed
     except Exception as e:
-        await notifier.send_message(f"⚠️ Ошибка обработки {symbol} {timeframe}: {e}")
+        logger.error(f"Unexpected error processing {symbol} {timeframe}: {e}")
+        await notifier.send_message(f"⚠️ Непредвиденная ошибка обработки {symbol} {timeframe}: {e}")
 
 
 async def hourly_summary(cfg: AppConfig, notifier: TelegramNotifier, cache: Cache):
@@ -98,72 +120,141 @@ async def hourly_summary(cfg: AppConfig, notifier: TelegramNotifier, cache: Cach
     await cache.set_meta("last_hourly", hour_key)
 
 
+class Application:
+    def __init__(self, config_path: str):
+        self.config_path = config_path
+        self.config = None
+        self.cache = None
+        self.notifier = None
+        self.client = None
+        self.running = False
+        self.logger = logging.getLogger(__name__)
+        
+    async def initialize(self):
+        """Initialize all components"""
+        try:
+            self.config = load_config(self.config_path)
+            
+            self.cache = Cache(self.config.sqlite_path)
+            await self.cache.init()
+            
+            self.notifier = TelegramNotifier(
+                self.config.telegram.bot_token, 
+                self.config.telegram.chat_id
+            )
+            self.client = YahooFinanceClient()
+            
+            self.logger.info("Application initialized successfully", extra={'event_type': 'app_init'})
+        except Exception as e:
+            self.logger.error(f"Failed to initialize application: {e}", extra={'event_type': 'init_error'})
+            raise
+            
+    async def cleanup(self):
+        """Clean up resources"""
+        try:
+            if self.client:
+                await self.client.close()
+            if self.notifier:
+                await self.notifier.close()
+            self.logger.info("Application cleaned up successfully", extra={'event_type': 'app_cleanup'})
+        except Exception as e:
+            self.logger.error(f"Error during cleanup: {e}", extra={'event_type': 'cleanup_error'})
+            
+    def signal_handler(self, signum, frame):
+        """Handle shutdown signals gracefully"""
+        self.logger.info(f"Received signal {signum}, shutting down gracefully", extra={'event_type': 'shutdown_signal', 'signal': signum})
+        self.running = False
+    
+    async def run(self):
+        """Main application loop"""
+        self.running = True
+        signal.signal(signal.SIGINT, self.signal_handler)
+        signal.signal(signal.SIGTERM, self.signal_handler)
+        
+        try:
+            while self.running:
+                start_time = datetime.now()
+                try:
+                    await self._run_cycle()
+                    cycle_duration = (datetime.now() - start_time).total_seconds()
+                    self.logger.info(
+                        f"Cycle completed in {cycle_duration:.2f}s",
+                        extra={'event_type': 'cycle_complete', 'duration': cycle_duration}
+                    )
+                except Exception as e:
+                    self.logger.error(f"Error in main cycle: {e}", extra={'event_type': 'cycle_error'})
+                    
+                # Sleep until next poll considering execution time
+                interval = min([t.poll_interval_seconds for t in self.config.timeframes]) if self.config.timeframes else 60
+                elapsed = (datetime.now() - start_time).total_seconds()
+                sleep_for = max(1, interval - int(elapsed))
+                await asyncio.sleep(sleep_for)
+        finally:
+            await self.cleanup()
+    
+    async def _run_cycle(self):
+        """Execute a single processing cycle"""
+        start_loop = datetime.now(tz=timezone.utc)
+        tasks: List[asyncio.Task] = []
+        for tf_job in self.config.timeframes:
+            tf = tf_job.timeframe
+            for sym in self.config.pairs:
+                tasks.append(asyncio.create_task(process_pair(self.config, self.cache, self.notifier, self.client, sym, tf)))
+        if self.config.notify_hourly_summary and start_loop.minute == 0:
+            tasks.append(asyncio.create_task(hourly_summary(self.config, self.notifier, self.cache)))
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+
 async def run_agent(args):
-    logging.info(f"Starting Forex Signal Agent with config: {args.config}")
-    cfg = load_config(args.config)
-
-    cache = Cache(cfg.sqlite_path)
-    await cache.init()
-
-    notifier = TelegramNotifier(cfg.telegram.bot_token, cfg.telegram.chat_id)
-    client = YahooFinanceClient()
-
-    try:
-        while True:
-            start_loop = datetime.now(tz=timezone.utc)
-            tasks: List[asyncio.Task] = []
-            for tf_job in cfg.timeframes:
-                tf = tf_job.timeframe
-                for sym in cfg.pairs:
-                    tasks.append(asyncio.create_task(process_pair(cfg, cache, notifier, client, sym, tf)))
-            if cfg.notify_hourly_summary and start_loop.minute == 0:
-                tasks.append(asyncio.create_task(hourly_summary(cfg, notifier, cache)))
-            if tasks:
-                await asyncio.gather(*tasks)
-            # sleep until next poll according to the smallest poll interval
-            interval = min([t.poll_interval_seconds for t in cfg.timeframes]) if cfg.timeframes else 60
-            # aim to align to minute boundaries
-            elapsed = (datetime.now(tz=timezone.utc) - start_loop).total_seconds()
-            sleep_for = max(1, interval - int(elapsed))
-            await asyncio.sleep(sleep_for)
-    finally:
-        logging.info("Stopping Forex Signal Agent...")
-        for task in asyncio.all_tasks():
-            if task is not asyncio.current_task():
-                task.cancel()
-        await client.close()
-        await notifier.close()
+    """Legacy function to maintain compatibility"""
+    app = Application(args.config)
+    await app.initialize()
+    await app.run()
 
 
 async def run_backtest(args):
-    # Грузим конфиг и запускаем бэктест
+    """Run backtesting with improved error handling"""
     cfg = load_config(args.config)
-    # Инициализируем клиент Yahoo Finance
     client = YahooFinanceClient()
+    
     try:
-        # Запускаем цикл бэктеста по таймфреймам
+        # Log the start of backtesting
+        logger.info("Starting backtesting", extra={'event_type': 'backtest_start'})
+        
+        # Run the backtesting cycle across timeframes
         for tf_job in cfg.timeframes:
             tf = tf_job.timeframe
-            # Запрашиваем данные для каждого символа
+            # Fetch data for each symbol
             for sym in cfg.pairs:
-                # Получаем свечи по таймфрейму и символу 1500 последних баров
+                # Get candles for the specific timeframe and symbol with the specified number of bars
                 df = await fetch_candles(client, sym, tf, bars=cfg.backtest.lookback_bars)
                 if df.empty:
-                    print(f"{sym} {tf}: no data")
+                    logger.warning(f"No data for {sym} {tf}", extra={'event_type': 'no_data', 'symbol': sym, 'timeframe': tf})
                     continue
-                # Подготавливаем данные для анализа (дневная свеча)
+                
+                # Prepare data for analysis (daily candles)
                 daily = daily_from_intraday(df)
-                # анализируем свечи
+                # Analyze the candles
                 events = analyze_pair(df, daily, sym, cfg.adx_threshold, cfg.rsi_overbought, cfg.rsi_oversold)
-                print(f"Backtest {sym} {tf}: последние события: ")
+                
+                logger.info(f"Backtest {sym} {tf}: {len(events)} events detected", 
+                           extra={'event_type': 'backtest_results', 'symbol': sym, 'timeframe': tf, 'event_count': len(events)})
+                
                 for ev in events:
-                    print(" -", ev.message)
+                    logger.info(f" - {ev.message}", extra={'event_type': 'backtest_event', 'symbol': sym, 'timeframe': tf})
+    except Exception as e:
+        logger.error(f"Error during backtesting: {e}", extra={'event_type': 'backtest_error'})
+        raise
     finally:
         await client.close()
+        logger.info("Backtesting completed", extra={'event_type': 'backtest_complete'})
 
 
 def main():
+    """Main entry point with proper error handling"""
     logging.info("Starting Forex Signal Agent...")
+    
     parser = argparse.ArgumentParser(description="Forex Signal Agent")
     parser.add_argument("--config", default="config.yaml", help="Путь к YAML конфигу")
     parser.add_argument("--backtest", action="store_true", help="Запустить бэктест и выйти")
@@ -171,14 +262,24 @@ def main():
 
     if args.backtest:
         logging.info("Starting Forex Signal Agent in backtest mode...")
-        asyncio.run(run_backtest(args))
+        try:
+            asyncio.run(run_backtest(args))
+        except Exception as e:
+            logger.error(f"Backtest error: {e}", extra={'event_type': 'backtest_error'})
+            sys.exit(1)
     else:
         logging.info("Starting Forex Signal Agent in normal mode...")
-        asyncio.run(run_agent(args))
+        try:
+            asyncio.run(run_agent(args))
+        except Exception as e:
+            logger.error(f"Agent error: {e}", extra={'event_type': 'agent_error'})
+            sys.exit(1)
 
 if __name__ == "__main__":
-    if __name__ == "__main__":
-        try:
-            main()
-        except KeyboardInterrupt:
-            logging.info("Agent stopped by user")
+    try:
+        main()
+    except KeyboardInterrupt:
+        logger.info("Agent stopped by user", extra={'event_type': 'agent_shutdown'})
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}", extra={'event_type': 'unexpected_error'})
+        sys.exit(1)
