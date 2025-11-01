@@ -207,6 +207,17 @@ class Application:
     async def _run_cycle(self):
         """Execute a single processing cycle"""
         start_loop = datetime.now(tz=timezone.utc)
+
+        # Check if it's a weekday (Monday=0 to Friday=4)
+        # Skip processing on weekends (Saturday=5, Sunday=6)
+        weekday = start_loop.weekday()
+        if weekday >= 5:  # Saturday or Sunday
+            self.logger.info(
+                f"Skipping cycle - weekend (day {weekday})",
+                extra={'event_type': 'cycle_skipped', 'weekday': weekday}
+            )
+            return
+
         tasks: List[asyncio.Task] = []
         for tf_job in self.config.timeframes:
             tf = tf_job.timeframe
