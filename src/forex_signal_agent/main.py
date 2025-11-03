@@ -37,6 +37,32 @@ def _timeframe_to_seconds(tf: str) -> int:
     return mapping.get(tf, 300)
 
 
+def _is_forex_market_open(now: datetime) -> bool:
+    """
+    Check if forex market is currently open.
+    Forex market hours: Sunday 22:00 GMT to Friday 22:00 GMT
+
+    Args:
+        now: Current datetime in UTC timezone
+
+    Returns:
+        True if market is open, False otherwise
+    """
+    # Get day of week (0=Monday, 6=Sunday)
+    weekday = now.weekday()
+    hour = now.hour
+
+    # Market is closed from Friday 22:00 GMT to Sunday 22:00 GMT
+    if weekday == 5:  # Saturday
+        return False
+    elif weekday == 6:  # Sunday
+        return hour >= 22  # Open from 22:00 GMT onwards
+    elif weekday == 4:  # Friday
+        return hour < 22  # Closed after 22:00 GMT
+    else:  # Monday to Thursday
+        return True
+
+
 async def fetch_candles(client: YahooFinanceClient, symbol: str, timeframe: str, bars: int = 400) -> pd.DataFrame:
     now = int(datetime.now(tz=timezone.utc).timestamp())
     sec = _timeframe_to_seconds(timeframe)
@@ -208,13 +234,13 @@ class Application:
         """Execute a single processing cycle"""
         start_loop = datetime.now(tz=timezone.utc)
 
-        # Check if it's a weekday (Monday=0 to Friday=4)
-        # Skip processing on weekends (Saturday=5, Sunday=6)
-        weekday = start_loop.weekday()
-        if weekday >= 5:  # Saturday or Sunday
+        # Check if forex market is open (Sunday 22:00 GMT to Friday 22:00 GMT)
+        if not _is_forex_market_open(start_loop):
+            weekday = start_loop.weekday()
+            hour = start_loop.hour
             self.logger.info(
-                f"Skipping cycle - weekend (day {weekday})",
-                extra={'event_type': 'cycle_skipped', 'weekday': weekday}
+                f"Skipping cycle - forex market closed (day {weekday}, hour {hour} GMT)",
+                extra={'event_type': 'cycle_skipped', 'weekday': weekday, 'hour_gmt': hour}
             )
             return
 
