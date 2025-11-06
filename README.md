@@ -1,6 +1,23 @@
-# Forex Signal Agent
+# Forex Signal Agent - Monorepo
 
-Forex Signal Agent — это асинхронное приложение на Python, предназначенное для автоматического мониторинга валютных пар на рынке Форекс и отправки торговых сигналов через Telegram-бота. Агент анализирует рыночные данные с использованием технических индикаторов (EMA, MACD, RSI, ADX) и отправляет уведомления о значимых событиях и торговых сигналах.
+Forex Signal Agent is a comprehensive trading signal system built as a Python monorepo. It includes an asynchronous monitoring agent, FastAPI backend, and React dashboard for tracking forex market movements and managing trading signals via Telegram.
+
+## 🏗️ Monorepo Structure
+
+This project uses a monorepo structure with multiple packages:
+
+```
+packages/
+├── agent/       # Forex signal monitoring agent (Python)
+├── backend/     # FastAPI REST API and WebSocket server (Python)
+└── dashboard/   # React web dashboard (TypeScript)
+```
+
+### Package Overview
+
+- **agent**: Core monitoring service that analyzes forex pairs using technical indicators
+- **backend**: API server for managing signals, user authentication, and data persistence
+- **dashboard**: Web UI for real-time monitoring and configuration management
 
 ## 🚀 Features
 
@@ -19,31 +36,72 @@ Forex Signal Agent — это асинхронное приложение на P
 
 ## 🛠️ Installation
 
-### Local Installation
+### Quick Start with Docker Compose (Recommended)
 
-1. Clone the repository:
-   ```bash
-   git clone <repository-url>
-   cd forex-signal-agent
-   ```
+The easiest way to run the entire stack:
 
-2. Create and activate virtual environment:
-   ```bash
-   python -m venv .venv
-   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-   ```
+```bash
+docker-compose up -d --build
+```
 
-3. Install dependencies:
-   ```bash
-   pip install -e .
-   ```
+This will start:
+- PostgreSQL database
+- Redis cache
+- Forex Signal Agent
+- FastAPI Backend (port 8000)
+- React Dashboard (port 5173)
 
-### Docker Installation
+### Local Development Setup
 
-1. Build and run with Docker Compose:
-   ```bash
-   docker-compose up -d --build
-   ```
+#### 1. Clone and Navigate
+```bash
+git clone <repository-url>
+cd forex-signal-agent
+```
+
+#### 2. Install Agent Package
+```bash
+cd packages/agent
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+pip install -e .
+```
+
+#### 3. Install Backend Package
+```bash
+cd packages/backend
+python -m venv .venv
+source .venv/bin/activate
+pip install -e .
+```
+
+#### 4. Install Dashboard Package
+```bash
+cd packages/dashboard
+npm install
+```
+
+### Running Individual Services
+
+#### Agent
+```bash
+cd packages/agent
+forex-signal-agent --config config.yaml
+```
+
+#### Backend
+```bash
+cd packages/backend
+forex-backend
+# Or with uvicorn:
+uvicorn forex_backend.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+#### Dashboard
+```bash
+cd packages/dashboard
+npm run dev
+```
 
 ## ⚙️ Configuration
 

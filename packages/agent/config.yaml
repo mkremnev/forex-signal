@@ -1,0 +1,33 @@
+# Конфигурация Forex Signal Agent
+timezone: Europe/Moscow
+pairs:
+  - EUR_USD:X
+  - GBP_USD:X
+  - EUR_GBP:X
+  - GBP_CHF:X
+  - USD_CAD:X
+  - G_C:F
+# Список заданий по таймфреймам
+# resolution: 1,5,15,30,60,1h,4h,D
+# poll_interval_seconds — как часто опрашивать API (подбирайте под таймфрейм и лимиты API)
+timeframes:
+  - timeframe: "4h"
+    poll_interval_seconds: 180
+telegram:
+  # Лучше задавать через переменные окружения TELEGRAM_BOT_TOKEN и TELEGRAM_CHAT_ID
+  bot_token: ""
+  chat_id: ""
+  message_cooldown_minutes: 60
+# Порог для тренда по ADX
+adx_threshold: 20.0
+# RSI уровни
+rsi_overbought: 70.0
+rsi_oversold: 30.0
+# Ежечасное «сердцебиение» в канал
+notify_hourly_summary: true
+# Бэктест
+backtest:
+  enabled: false
+  lookback_bars: 1500
+# Путь к SQLite базе для кеша
+sqlite_path: ./data/cache.db
