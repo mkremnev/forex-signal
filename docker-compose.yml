@@ -40,7 +40,7 @@ services:
     container_name: forex-backend
     restart: unless-stopped
     env_file:
-      - .env
+      - packages/agent/.env
     environment:
       - TZ=Europe/Moscow
       - DATABASE_URL=postgresql+asyncpg://forex:forex@postgres:5432/forex_db
@@ -79,7 +79,7 @@ services:
     container_name: forex-signal-agent
     restart: unless-stopped
     env_file:
-      - .env
+      - packages/agent/.env
     environment:
       - TZ=Europe/Moscow
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}

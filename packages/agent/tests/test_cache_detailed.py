@@ -7,7 +7,7 @@ from src.forex_signal_agent.sqlite_cache import Cache
 
 async def test_cache_detailed():
     # Use the same path as in your config
-    db_path = "./data/cache.db"
+    db_path = "../data/cache.db"
     
     print(f"Testing cache in detail at: {db_path}")
     

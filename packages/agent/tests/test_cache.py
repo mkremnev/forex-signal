@@ -7,7 +7,7 @@ from src.forex_signal_agent.sqlite_cache import Cache
 
 async def test_cache():
     # Use the same path as in config.yaml
-    db_path = "./data/cache.db"
+    db_path = "../data/cache.db"
     
     print(f"Testing cache initialization at: {db_path}")
     print(f"Directory exists: {os.path.exists(os.path.dirname(db_path))}")

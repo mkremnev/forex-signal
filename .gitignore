@@ -36,16 +36,16 @@ env/
 .DS_Store
 
 # Environment variables
-.env
+packages/agent/.env
 .env.local
 .env.*.local
 
 # Logs
-logs/
+packages/agent/logs/
 *.log
 
 # Data and cache
-data/
+packages/agent/data/
 *.db
 *.sqlite
 *.sqlite3
