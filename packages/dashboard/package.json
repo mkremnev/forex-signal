@@ -11,12 +11,14 @@
   },
   "dependencies": {
     "@fontsource/roboto": "^5.2.8",
+    "axios": "^1.13.2",
     "radix-ui": "^1.4.3",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-error-boundary": "^6.0.0",
     "react-router-dom": "^7.9.5",
-    "styled-components": "^6.1.19"
+    "styled-components": "^6.1.19",
+    "swr": "^2.3.6"
   },
   "devDependencies": {
     "@eslint/js": "^9.36.0",
