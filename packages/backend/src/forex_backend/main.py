@@ -4,10 +4,14 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from forex_backend.api.v1 import api_router
+
 app = FastAPI(
     title="Forex Signal Agent API",
     description="Backend API for managing forex signals and user dashboard",
     version="0.1.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
 )
 
 # Configure CORS
@@ -19,6 +23,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Include API v1 router
+app.include_router(api_router, prefix="/api")
+
 
 @app.get("/")
 async def root():
@@ -26,7 +33,7 @@ async def root():
     return {"status": "ok", "service": "forex-backend"}
 
 
-@app.get("/api/v1/health")
+@app.get("/health")
 async def health():
     """API health check."""
     return {"status": "healthy"}
