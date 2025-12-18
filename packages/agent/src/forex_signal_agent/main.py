@@ -91,7 +91,7 @@ def daily_from_intraday(df: pd.DataFrame) -> pd.DataFrame:
     return daily
 
 
-async def process_pair(cfg: AppConfig, cache: Cache, notifier: TelegramNotifier, client: YahooFinanceClient, symbol: str, timeframe: str):
+async def process_pair(cfg: AppConfig, cache: Cache, notifier: TelegramNotifier, client: YahooFinanceClient, symbol: str, timeframe: str, integration: Optional['IntegrationManager'] = None):
     """Process a single pair with comprehensive error handling"""
     try:
         logger.info(f"🔄 Обработка пары {symbol} {timeframe}")
@@ -120,14 +120,27 @@ async def process_pair(cfg: AppConfig, cache: Cache, notifier: TelegramNotifier,
         cooldown_sec = cfg.telegram.message_cooldown_minutes * 60
         now_ts = int(datetime.now(tz=timezone.utc).timestamp())
         for ev in events:
+            # Publish signal to Redis (always, regardless of cooldown)
+            if integration is not None:
+                try:
+                    await integration.publish_signal(
+                        symbol=symbol,
+                        timeframe=timeframe,
+                        kind=ev.kind,
+                        message=ev.message,
+                        importance=ev.importance
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to publish signal to Redis: {e}")
+
             last_ts = await cache.get_last_sent(symbol, timeframe, ev.kind)
             time_diff = now_ts - (last_ts or 0)
             cooldown_met = last_ts is None or time_diff >= cooldown_sec
             importance_check = ev.importance >= 2
             should_send = cooldown_met or importance_check
-            
+
             logger.debug(f"Cooldown check for {symbol} {timeframe} {ev.kind}: last_ts={last_ts}, now_ts={now_ts}, time_diff={time_diff}, cooldown={cooldown_sec}, cooldown_met={cooldown_met}, importance={ev.importance}, importance_check={importance_check}, should_send={should_send}")
-            
+
             if should_send:
                 logger.info(f"Sending message for {symbol} {timeframe} {ev.kind} (cooldown check passed)")
                 await notifier.send_message(f"{ev.message} (TF: {timeframe})")
@@ -282,7 +295,7 @@ class Application:
         for tf_job in self.config.timeframes:
             tf = tf_job.timeframe
             for sym in self.config.pairs:
-                tasks.append(asyncio.create_task(process_pair(self.config, self.cache, self.notifier, self.client, sym, tf)))
+                tasks.append(asyncio.create_task(process_pair(self.config, self.cache, self.notifier, self.client, sym, tf, self.integration)))
         if self.config.notify_hourly_summary and start_loop.minute == 0:
             tasks.append(asyncio.create_task(hourly_summary(self.config, self.notifier, self.cache)))
 

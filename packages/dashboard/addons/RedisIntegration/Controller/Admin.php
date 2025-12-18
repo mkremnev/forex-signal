@@ -9,10 +9,32 @@
 
 namespace RedisIntegration\Controller;
 
+use App\Controller\Base;
 use RedisIntegration\Helper\RedisClient;
 
-class Admin extends \Cockpit\AuthController
+class Admin extends Base
 {
+    protected $layout = "app:layouts/app.php";
+
+    /**
+     * Check permissions before executing any action.
+     */
+    public function before(string $action = ""): bool
+    {
+        // Allow health check without authentication
+        if ($action === "stream" && $this->hasValidApiKey()) {
+            return true;
+        }
+
+        // Check for view permission
+        if (!$this->helper("acl")->hasPermission("redisintegration/view")) {
+            $this->stop(401);
+            return false;
+        }
+
+        return true;
+    }
+
     /**
      * GET /redis-integration
      *
@@ -20,77 +42,24 @@ class Admin extends \Cockpit\AuthController
      */
     public function index()
     {
-        // Check authentication
-        if (!$this->helper('auth')->getUser()) {
-            return $this->helper('auth')->redirect();
-        }
-
-        return $this->render('redisintegration:views/index.php', [
-            'title' => 'Agent Monitor',
+        return $this->render("redisintegration:views/index.php", [
+            "title" => "Agent Monitor",
+            "canControl" => $this->helper("acl")->hasPermission(
+                "redisintegration/control",
+            ),
         ]);
     }
 
     /**
      * GET /redis-integration/stream
      *
-     * Server-Sent Events endpoint for real-time updates.
-     *
-     * Subscribes to Agent channels and forwards messages to browser.
+     * SSE endpoint disabled - using polling via API instead.
      */
     public function stream()
     {
-        // Check authentication via session or token
-        if (!$this->helper('auth')->getUser() && !$this->hasValidApiKey()) {
-            http_response_code(401);
-            echo "data: {\"error\": \"Unauthorized\"}\n\n";
-            exit;
-        }
-
-        // Set SSE headers
-        header('Content-Type: text/event-stream');
-        header('Cache-Control: no-cache');
-        header('Connection: keep-alive');
-        header('X-Accel-Buffering: no');
-
-        // Disable output buffering
-        if (ob_get_level()) {
-            ob_end_clean();
-        }
-
-        try {
-            $redis = RedisClient::getInstance();
-            $client = $redis->getClient();
-
-            // Subscribe to Agent channels
-            $channels = [
-                $redis->getChannel('status'),
-                $redis->getChannel('signals'),
-                $redis->getChannel('metrics'),
-            ];
-
-            $pubsub = $client->pubSubLoop();
-            $pubsub->subscribe(...$channels);
-
-            // Send initial connection event
-            $this->sendSSE('connected', ['channels' => $channels]);
-
-            // Listen for messages
-            foreach ($pubsub as $message) {
-                if ($message->kind === 'message') {
-                    $eventType = $this->channelToEventType($message->channel);
-                    $data = json_decode($message->payload, true) ?? [];
-
-                    $this->sendSSE($eventType, $data);
-                }
-
-                // Check if connection is still alive
-                if (connection_aborted()) {
-                    break;
-                }
-            }
-        } catch (\Exception $e) {
-            $this->sendSSE('error', ['message' => $e->getMessage()]);
-        }
+        header("Content-Type: application/json");
+        echo json_encode(["error" => "SSE disabled, use API polling"]);
+        exit();
     }
 
     /**
@@ -99,9 +68,9 @@ class Admin extends \Cockpit\AuthController
      * @param string $event Event type
      * @param array $data Event data
      */
-    private function sendSSE(string $event, array $data): void
+    public function sendSSE(string $event, array $data): void
     {
-        $eventId = time() . '-' . mt_rand(1000, 9999);
+        $eventId = time() . "-" . mt_rand(1000, 9999);
 
         echo "id: {$eventId}\n";
         echo "event: {$event}\n";
@@ -116,15 +85,15 @@ class Admin extends \Cockpit\AuthController
      * @param string $channel Channel name
      * @return string Event type
      */
-    private function channelToEventType(string $channel): string
+    public function channelToEventType(string $channel): string
     {
         $mapping = [
-            'forex:status' => 'status',
-            'forex:signals' => 'signal',
-            'forex:metrics' => 'metrics',
+            "forex:status" => "status",
+            "forex:signals" => "signal",
+            "forex:metrics" => "metrics",
         ];
 
-        return $mapping[$channel] ?? 'message';
+        return $mapping[$channel] ?? "message";
     }
 
     /**
@@ -134,15 +103,20 @@ class Admin extends \Cockpit\AuthController
      */
     private function hasValidApiKey(): bool
     {
-        $token = $this->app->request->headers->get('Cockpit-Token');
+        // Get token from header or query parameter
+        $token = $_SERVER["HTTP_COCKPIT_TOKEN"] ?? null;
         if (!$token) {
-            $token = $this->param('token');
+            $token = $this->param("token");
         }
 
         if (!$token) {
             return false;
         }
 
-        return $this->module('cockpit')->hasValidApiToken($token);
+        try {
+            return $this->app->helper("api")->isApiRequestAllowed($token);
+        } catch (\Exception $e) {
+            return false;
+        }
     }
 }

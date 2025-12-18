@@ -1,9 +1,8 @@
 <?php
 /**
- * Redis client wrapper for Dashboard integration.
+ * Simple Redis client using sockets (no php-redis extension).
  *
- * Provides singleton access to Redis connection and helper methods
- * for Pub/Sub communication with Agent.
+ * Implements only the commands needed for Dashboard integration.
  */
 
 namespace RedisIntegration\Helper;
@@ -11,17 +10,29 @@ namespace RedisIntegration\Helper;
 class RedisClient
 {
     private static ?RedisClient $instance = null;
-    private ?\Redis $client = null;
+    private $socket = null;
     private array $config = [];
 
     private function __construct()
     {
-        $this->loadConfig();
+        $this->config = [
+            'host' => getenv('REDIS_HOST') ?: 'redis',
+            'port' => (int)(getenv('REDIS_PORT') ?: 6379),
+            'timeout' => 5,
+            'channels' => [
+                'commands' => 'forex:commands',
+                'config' => 'forex:config',
+                'status' => 'forex:status',
+                'signals' => 'forex:signals',
+                'metrics' => 'forex:metrics',
+            ],
+            'keys' => [
+                'last_status' => 'forex:agent:last_status',
+                'signals_list' => 'forex:agent:signals',
+            ],
+        ];
     }
 
-    /**
-     * Get singleton instance.
-     */
     public static function getInstance(): RedisClient
     {
         if (self::$instance === null) {
@@ -30,89 +41,104 @@ class RedisClient
         return self::$instance;
     }
 
-    /**
-     * Load Redis configuration.
-     */
-    private function loadConfig(): void
+    private function connect(): void
     {
-        $configPath = COCKPIT_DIR . '/config/redis.php';
-        if (file_exists($configPath)) {
-            $this->config = require $configPath;
-        } else {
-            // Default configuration
-            $this->config = [
-                'host' => getenv('REDIS_HOST') ?: 'redis',
-                'port' => (int)(getenv('REDIS_PORT') ?: 6379),
-                'db' => 0,
-                'password' => null,
-            ];
+        if ($this->socket !== null) {
+            return;
+        }
+
+        $this->socket = @fsockopen(
+            $this->config['host'],
+            $this->config['port'],
+            $errno,
+            $errstr,
+            $this->config['timeout']
+        );
+
+        if (!$this->socket) {
+            throw new \Exception("Redis connection failed: $errstr ($errno)");
+        }
+
+        stream_set_timeout($this->socket, $this->config['timeout']);
+    }
+
+    private function sendCommand(array $args): string
+    {
+        $this->connect();
+
+        // Build RESP protocol command
+        $cmd = "*" . count($args) . "\r\n";
+        foreach ($args as $arg) {
+            $cmd .= "$" . strlen($arg) . "\r\n" . $arg . "\r\n";
+        }
+
+        fwrite($this->socket, $cmd);
+        return $this->readResponse();
+    }
+
+    private function readResponse(): string
+    {
+        $line = fgets($this->socket);
+        if ($line === false) {
+            throw new \Exception("Redis read error");
+        }
+
+        $type = $line[0];
+        $data = trim(substr($line, 1));
+
+        switch ($type) {
+            case '+': // Simple string
+                return $data;
+            case '-': // Error
+                throw new \Exception("Redis error: $data");
+            case ':': // Integer
+                return $data;
+            case '$': // Bulk string
+                $len = (int)$data;
+                if ($len === -1) {
+                    return '';
+                }
+                $bulk = '';
+                while (strlen($bulk) < $len) {
+                    $bulk .= fread($this->socket, $len - strlen($bulk));
+                }
+                fgets($this->socket); // Read trailing \r\n
+                return $bulk;
+            case '*': // Array
+                $count = (int)$data;
+                if ($count === -1) {
+                    return '';
+                }
+                $results = [];
+                for ($i = 0; $i < $count; $i++) {
+                    $results[] = $this->readResponse();
+                }
+                return json_encode($results);
+            default:
+                return $data;
         }
     }
 
-    /**
-     * Get Redis client, connecting if necessary.
-     *
-     * @return \Redis
-     * @throws \Exception If connection fails
-     */
-    public function getClient(): \Redis
+    public function ping(): bool
     {
-        if ($this->client === null) {
-            $this->client = new \Redis();
-
-            $connected = $this->client->connect(
-                $this->config['host'],
-                $this->config['port'],
-                5.0 // timeout
-            );
-
-            if (!$connected) {
-                throw new \Exception('Failed to connect to Redis');
-            }
-
-            if (!empty($this->config['password'])) {
-                $this->client->auth($this->config['password']);
-            }
-
-            if (isset($this->config['db'])) {
-                $this->client->select($this->config['db']);
-            }
+        try {
+            $response = $this->sendCommand(['PING']);
+            return $response === 'PONG';
+        } catch (\Exception $e) {
+            return false;
         }
-
-        return $this->client;
     }
 
-    /**
-     * Publish message to Redis channel.
-     *
-     * @param string $channel Channel name
-     * @param array $message Message data (will be JSON encoded)
-     * @return int Number of subscribers that received the message
-     */
-    public function publish(string $channel, array $message): int
-    {
-        $json = json_encode($message, JSON_UNESCAPED_UNICODE);
-        return $this->getClient()->publish($channel, $json);
-    }
-
-    /**
-     * Get value by key.
-     *
-     * @param string $key Redis key
-     * @return string|null Value or null if not found
-     */
     public function get(string $key): ?string
     {
-        $value = $this->getClient()->get($key);
-        return $value === false ? null : $value;
+        try {
+            $response = $this->sendCommand(['GET', $key]);
+            return $response === '' ? null : $response;
+        } catch (\Exception $e) {
+            return null;
+        }
     }
 
-    /**
-     * Get JSON value by key.
-     *
-     * @param string $key Redis key
-     * @return array|null Decoded JSON or null
-     */
     public function getJson(string $key): ?array
     {
         $value = $this->get($key);
@@ -122,26 +148,16 @@ class RedisClient
         return json_decode($value, true);
     }
 
-    /**
-     * Get list range.
-     *
-     * @param string $key Redis list key
-     * @param int $start Start index
-     * @param int $end End index (-1 for all)
-     * @return array List of values
-     */
     public function lrange(string $key, int $start = 0, int $end = -1): array
     {
-        return $this->getClient()->lRange($key, $start, $end);
+        try {
+            $response = $this->sendCommand(['LRANGE', $key, (string)$start, (string)$end]);
+            return json_decode($response, true) ?? [];
+        } catch (\Exception $e) {
+            return [];
+        }
     }
 
-    /**
-     * Get list as JSON decoded array.
-     *
-     * @param string $key Redis list key
-     * @param int $limit Maximum items to return
-     * @return array Array of decoded JSON items
-     */
     public function getListJson(string $key, int $limit = 50): array
     {
         $items = $this->lrange($key, 0, $limit - 1);
@@ -150,50 +166,42 @@ class RedisClient
         }, $items);
     }
 
-    /**
-     * Check if Redis is connected.
-     *
-     * @return bool True if connected
-     */
-    public function isConnected(): bool
+    public function publish(string $channel, array $message): int
     {
+        $json = json_encode($message, JSON_UNESCAPED_UNICODE);
         try {
-            return $this->getClient()->ping() === true;
+            $response = $this->sendCommand(['PUBLISH', $channel, $json]);
+            return (int)$response;
         } catch (\Exception $e) {
-            return false;
+            return 0;
         }
     }
 
-    /**
-     * Get channel name from config.
-     *
-     * @param string $name Channel identifier
-     * @return string Full channel name
-     */
+    public function isConnected(): bool
+    {
+        return $this->ping();
+    }
+
     public function getChannel(string $name): string
     {
         return $this->config['channels'][$name] ?? "forex:{$name}";
     }
 
-    /**
-     * Get key name from config.
-     *
-     * @param string $name Key identifier
-     * @return string Full key name
-     */
     public function getKey(string $name): string
     {
         return $this->config['keys'][$name] ?? "forex:agent:{$name}";
     }
 
-    /**
-     * Close Redis connection.
-     */
     public function close(): void
     {
-        if ($this->client !== null) {
-            $this->client->close();
-            $this->client = null;
+        if ($this->socket !== null) {
+            fclose($this->socket);
+            $this->socket = null;
         }
+    }
+
+    public function __destruct()
+    {
+        $this->close();
     }
 }

@@ -11,12 +11,35 @@
  * - Agent Monitor UI page
  */
 
-// Register addon routes
-$this->bindClass('RedisIntegration\\Controller\\Api', '/api/redis-integration');
-$this->bindClass('RedisIntegration\\Controller\\Admin', '/redis-integration');
+// Load admin interface when system initializes
+$this->on('app.admin.init', function() {
+    include(__DIR__.'/admin.php');
+});
+
+// Load API routes
+include(__DIR__.'/api.php');
 
 // Register module functions
 $this->module('redisintegration')->extend([
+
+    /**
+     * Get addon configuration.
+     *
+     * @param string|null $key Configuration key
+     * @param mixed $default Default value
+     * @return mixed Configuration value or array
+     */
+    'config' => function (?string $key = null, $default = null) {
+        $config = array_replace_recursive([
+            'enabled' => true,
+            'redis' => [
+                'host' => getenv('REDIS_HOST') ?: 'redis',
+                'port' => (int)(getenv('REDIS_PORT') ?: 6379),
+            ],
+        ], $this->app->retrieve('redisintegration', []) ?? []);
+
+        return $key ? ($config[$key] ?? $default) : $config;
+    },
 
     /**
      * Send command to Agent.
@@ -104,48 +127,23 @@ $this->module('redisintegration')->extend([
 ]);
 
 // Hook: Sync config when AgentConfig singleton is saved
-$this->on('singleton.save.after.AgentConfig', function ($name, $data) {
+// Cockpit uses content.item.save.{modelName} for all content types including singletons
+$this->on('content.item.save.AgentConfig', function ($item, $isUpdate, $collection) {
 
     try {
         // Convert singleton data to Agent config format
-        $config = \RedisIntegration\Helper\MessageBuilder::configFromSingleton($data);
+        $config = \RedisIntegration\Helper\MessageBuilder::configFromSingleton($item);
 
         if (!empty($config)) {
             $this->module('redisintegration')->sendConfigToAgent($config);
+            error_log('RedisIntegration: Config synced to Agent - pairs: ' . json_encode($config['pairs'] ?? []));
         }
 
         // Trigger custom event
-        $this->trigger('redisintegration.config.sent', [$data, $config]);
+        $this->trigger('redisintegration.config.sent', [$item, $config]);
 
     } catch (\Exception $e) {
         // Log error but don't break the save operation
         error_log('RedisIntegration: Failed to sync config - ' . $e->getMessage());
-    }
-});
-
-// Add menu item to admin sidebar
-$this->on('cockpit.menu.main', function () {
-    return [
-        'label' => 'Agent Monitor',
-        'icon' => 'activity',
-        'route' => '/redis-integration',
-        'active' => strpos($this['route'], '/redis-integration') === 0,
-    ];
-});
-
-// Add to system menu
-$this->on('cockpit.menu.system', function () {
-    return [
-        'label' => 'Agent Monitor',
-        'icon' => 'activity',
-        'route' => '/redis-integration',
-    ];
-});
-
-// Register assets for admin pages
-$this->on('app.layout.header', function () {
-    // Only load on redis-integration pages
-    if (strpos($this['route'], '/redis-integration') === 0) {
-        echo '<script src="' . $this->pathToUrl('redisintegration:assets/agent-monitor.js') . '"></script>';
     }
 });

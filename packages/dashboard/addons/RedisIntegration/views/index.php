@@ -1,6 +1,6 @@
 <kiss-container class="kiss-margin-large">
     <ul class="kiss-breadcrumbs">
-        <li><a href="<?= $this->route('/') ?>">Home</a></li>
+        <li><a href="<?= $this->route("/") ?>">Home</a></li>
         <li><span>Agent Monitor</span></li>
     </ul>
 
@@ -19,11 +19,13 @@
     <!-- Status Card -->
     <kiss-card class="kiss-margin-large-top kiss-padding">
         <div class="kiss-flex kiss-flex-middle kiss-margin-bottom">
-            <kiss-svg src="<?= $this->pathToUrl('system:assets/icons/activity.svg') ?>" width="24" height="24"></kiss-svg>
+            <kiss-svg src="<?= $this->pathToUrl(
+                "system:assets/icons/activity.svg",
+            ) ?>" width="24" height="24"></kiss-svg>
             <span class="kiss-size-5 kiss-text-bold kiss-margin-small-left">Agent Status</span>
         </div>
 
-        <div id="agent-status" class="kiss-grid kiss-grid-match" gap="small" cols="4">
+        <div id="agent-status" class="kiss-grid kiss-grid-match" gap="small" cols="6">
             <div>
                 <div class="kiss-color-muted kiss-size-small">State</div>
                 <div id="status-state" class="kiss-size-4 kiss-text-bold">-</div>
@@ -37,61 +39,52 @@
                 <div id="status-last-cycle" class="kiss-size-4">-</div>
             </div>
             <div>
+                <div class="kiss-color-muted kiss-size-small">Pairs</div>
+                <div id="status-pairs" class="kiss-size-4">0</div>
+            </div>
+            <div>
+                <div class="kiss-color-muted kiss-size-small">Timeframes</div>
+                <div id="status-timeframes" class="kiss-size-4">0</div>
+            </div>
+            <div>
                 <div class="kiss-color-muted kiss-size-small">Errors</div>
                 <div id="status-errors" class="kiss-size-4">0</div>
             </div>
         </div>
 
+        <?php if ($canControl ?? false): ?>
         <div class="kiss-margin-top kiss-flex kiss-flex-middle" gap="small">
-            <button id="btn-pause" class="kiss-button kiss-button-small kiss-button-outline" onclick="agentMonitor.sendCommand('pause')">
-                <kiss-svg src="<?= $this->pathToUrl('system:assets/icons/pause.svg') ?>" width="16" height="16"></kiss-svg>
+            <button id="btn-pause" class="kiss-button kiss-button-small kiss-button-outline" onclick="sendCommand('pause')">
+                <kiss-svg src="<?= $this->pathToUrl(
+                    "system:assets/icons/pause.svg",
+                ) ?>" width="16" height="16"></kiss-svg>
                 Pause
             </button>
-            <button id="btn-resume" class="kiss-button kiss-button-small kiss-button-primary" onclick="agentMonitor.sendCommand('resume')">
-                <kiss-svg src="<?= $this->pathToUrl('system:assets/icons/play.svg') ?>" width="16" height="16"></kiss-svg>
+            <button id="btn-resume" class="kiss-button kiss-button-small kiss-button-primary" onclick="sendCommand('resume')">
+                <kiss-svg src="<?= $this->pathToUrl(
+                    "system:assets/icons/play.svg",
+                ) ?>" width="16" height="16"></kiss-svg>
                 Resume
             </button>
-            <button id="btn-reload" class="kiss-button kiss-button-small kiss-button-outline" onclick="agentMonitor.sendCommand('reload')">
-                <kiss-svg src="<?= $this->pathToUrl('system:assets/icons/refresh-cw.svg') ?>" width="16" height="16"></kiss-svg>
+            <button id="btn-reload" class="kiss-button kiss-button-small kiss-button-outline" onclick="sendCommand('reload')">
+                <kiss-svg src="<?= $this->pathToUrl(
+                    "system:assets/icons/refresh-cw.svg",
+                ) ?>" width="16" height="16"></kiss-svg>
                 Reload Config
             </button>
-            <button id="btn-status" class="kiss-button kiss-button-small kiss-button-outline" onclick="agentMonitor.sendCommand('status')">
+            <button id="btn-status" class="kiss-button kiss-button-small kiss-button-outline" onclick="sendCommand('status')">
                 Request Status
             </button>
         </div>
-    </kiss-card>
-
-    <!-- Metrics Card -->
-    <kiss-card class="kiss-margin-large-top kiss-padding">
-        <div class="kiss-flex kiss-flex-middle kiss-margin-bottom">
-            <kiss-svg src="<?= $this->pathToUrl('system:assets/icons/bar-chart.svg') ?>" width="24" height="24"></kiss-svg>
-            <span class="kiss-size-5 kiss-text-bold kiss-margin-small-left">Performance Metrics</span>
-        </div>
-
-        <div id="agent-metrics" class="kiss-grid kiss-grid-match" gap="small" cols="4">
-            <div>
-                <div class="kiss-color-muted kiss-size-small">Pairs Processed</div>
-                <div id="metrics-pairs" class="kiss-size-4 kiss-text-bold">0</div>
-            </div>
-            <div>
-                <div class="kiss-color-muted kiss-size-small">Cycle Duration</div>
-                <div id="metrics-duration" class="kiss-size-4">-</div>
-            </div>
-            <div>
-                <div class="kiss-color-muted kiss-size-small">Signals Generated</div>
-                <div id="metrics-signals" class="kiss-size-4">0</div>
-            </div>
-            <div>
-                <div class="kiss-color-muted kiss-size-small">Errors in Cycle</div>
-                <div id="metrics-errors" class="kiss-size-4">0</div>
-            </div>
-        </div>
+        <?php endif; ?>
     </kiss-card>
 
     <!-- Recent Signals Card -->
     <kiss-card class="kiss-margin-large-top kiss-padding">
         <div class="kiss-flex kiss-flex-middle kiss-margin-bottom">
-            <kiss-svg src="<?= $this->pathToUrl('system:assets/icons/bell.svg') ?>" width="24" height="24"></kiss-svg>
+            <kiss-svg src="<?= $this->pathToUrl(
+                "system:assets/icons/bell.svg",
+            ) ?>" width="24" height="24"></kiss-svg>
             <span class="kiss-size-5 kiss-text-bold kiss-margin-small-left">Recent Signals</span>
             <span id="signals-count" class="kiss-badge kiss-margin-small-left">0</span>
         </div>
@@ -106,7 +99,9 @@
     <!-- Redis Connection Card -->
     <kiss-card class="kiss-margin-large-top kiss-padding">
         <div class="kiss-flex kiss-flex-middle kiss-margin-bottom">
-            <kiss-svg src="<?= $this->pathToUrl('system:assets/icons/database.svg') ?>" width="24" height="24"></kiss-svg>
+            <kiss-svg src="<?= $this->pathToUrl(
+                "system:assets/icons/database.svg",
+            ) ?>" width="24" height="24"></kiss-svg>
             <span class="kiss-size-5 kiss-text-bold kiss-margin-small-left">Redis Connection</span>
         </div>
 
@@ -117,26 +112,131 @@
 </kiss-container>
 
 <script>
+    // Global API base URL
+    const apiBaseUrl = '<?= $this->routeUrl("/api/redis-integration") ?>';
+
+    // Send command to Agent
+    async function sendCommand(action) {
+        try {
+            const response = await fetch(apiBaseUrl + '/command', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: action })
+            });
+            const data = await response.json();
+            if (data.success) {
+                if (window.App && App.ui) {
+                    App.ui.notify('Command "' + action + '" sent', 'success');
+                }
+                console.log('Command sent:', action, data);
+            } else {
+                if (window.App && App.ui) {
+                    App.ui.notify('Failed: ' + (data.error || 'Unknown error'), 'error');
+                }
+            }
+        } catch (e) {
+            console.error('Failed to send command:', e);
+            if (window.App && App.ui) {
+                App.ui.notify('Failed to send command', 'error');
+            }
+        }
+    }
+
     // Initialize Agent Monitor when DOM is ready
     document.addEventListener('DOMContentLoaded', function() {
-        window.agentMonitor = new AgentMonitor({
-            sseUrl: '<?= $this->routeUrl('/redis-integration/stream') ?>',
-            apiBaseUrl: '<?= $this->routeUrl('/api/redis-integration') ?>',
-            onStatus: updateStatus,
-            onSignal: addSignal,
-            onMetrics: updateMetrics,
-            onConnectionChange: updateConnectionStatus,
-            onError: handleError
-        });
+        console.log('AgentMonitor API:', apiBaseUrl);
 
-        // Connect to SSE stream
-        agentMonitor.connect();
+        // Use polling instead of SSE
+        updateConnectionStatus(true);
 
-        // Load initial data
-        agentMonitor.loadInitialData();
+        // Initial load
+        loadStatus();
+        loadSignals();
+        checkHealth();
 
-        // Check Redis health
-        agentMonitor.checkHealth();
+        // Poll every 5 seconds
+        setInterval(loadStatus, 5000);
+        setInterval(loadSignals, 10000);
+        setInterval(checkHealth, 30000);
+
+        async function loadStatus() {
+            try {
+                const response = await fetch(apiBaseUrl + '/status');
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.payload || data.state) {
+                        updateStatus(data);
+                        updateConnectionStatus(true);
+                    }
+                }
+            } catch (e) {
+                console.warn('Failed to load status:', e);
+                updateConnectionStatus(false);
+            }
+        }
+
+        async function loadSignals() {
+            try {
+                const response = await fetch(apiBaseUrl + '/signals?limit=20');
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.signals && Array.isArray(data.signals)) {
+                        document.getElementById('signals-count').textContent = data.count || 0;
+                        displaySignals(data.signals);
+                    }
+                }
+            } catch (e) {
+                console.warn('Failed to load signals:', e);
+            }
+        }
+
+        function displaySignals(signals) {
+            const list = document.getElementById('signals-list');
+            if (!list) return;
+
+            if (signals.length === 0) {
+                list.innerHTML = '<div class="kiss-color-muted kiss-text-center kiss-padding">No signals yet. Waiting for data...</div>';
+                return;
+            }
+
+            list.innerHTML = '';
+            signals.forEach(signal => {
+                const payload = signal.payload || signal;
+                const item = document.createElement('div');
+                item.className = 'kiss-flex kiss-flex-middle kiss-padding-small kiss-margin-small-bottom';
+                item.style.background = 'var(--kiss-color-muted-contrast)';
+                item.style.borderRadius = '4px';
+                item.style.borderLeft = payload.importance >= 2 ? '3px solid var(--kiss-color-danger)' : '3px solid var(--kiss-color-primary)';
+
+                item.innerHTML = `
+                    <div class="kiss-flex-1">
+                        <div class="kiss-text-bold">${escapeHtml(payload.symbol)} (${escapeHtml(payload.timeframe)})</div>
+                        <div class="kiss-color-muted kiss-size-small">${escapeHtml(payload.message)}</div>
+                    </div>
+                    <div class="kiss-size-small kiss-color-muted">
+                        ${formatTime(signal.timestamp)}
+                    </div>
+                `;
+                list.appendChild(item);
+            });
+        }
+
+        async function checkHealth() {
+            try {
+                const response = await fetch(apiBaseUrl + '/health');
+                const data = await response.json();
+                const statusEl = document.getElementById('redis-status');
+                if (statusEl) {
+                    if (data.redis === 'connected') {
+                        statusEl.innerHTML = '<span class="kiss-color-success">Connected</span>';
+                    } else {
+                        statusEl.innerHTML = '<span class="kiss-color-danger">' + data.redis + '</span>';
+                    }
+                }
+            } catch (e) {
+                console.warn('Health check failed:', e);
+            }
+        }
     });
 
     function updateStatus(data) {
@@ -153,6 +253,8 @@
             document.getElementById('status-last-cycle').textContent = formatTime(payload.last_cycle_at);
         }
 
+        document.getElementById('status-pairs').textContent = payload.pairs_count || '0';
+        document.getElementById('status-timeframes').textContent = payload.timeframes_count || '0';
         document.getElementById('status-errors').textContent = payload.error_count || '0';
 
         // Update button states

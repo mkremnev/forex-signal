@@ -1,23 +1,4 @@
 services:
-  postgres:
-    image: postgres:16-alpine
-    container_name: forex-postgres
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: forex
-      POSTGRES_PASSWORD: forex
-      POSTGRES_DB: forex_db
-      TZ: Europe/Moscow
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U forex"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   redis:
     image: redis:7-alpine
     container_name: forex-redis
@@ -44,7 +25,7 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
     ports:
-      - "5173:8080"
+      - "5173:80"
     depends_on:
       redis:
         condition: service_healthy

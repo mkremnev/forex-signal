@@ -3,40 +3,38 @@
 
 import asyncio
 import os
-from src.forex_signal_agent.sqlite_cache import Cache
+import tempfile
+import pytest
+from forex_signal_agent.sqlite_cache import Cache
 
+
+@pytest.mark.asyncio
 async def test_cache():
-    # Use the same path as in config.yaml
-    db_path = "../data/cache.db"
-    
-    print(f"Testing cache initialization at: {db_path}")
-    print(f"Directory exists: {os.path.exists(os.path.dirname(db_path))}")
-    print(f"File exists before init: {os.path.exists(db_path)}")
-    
-    cache = Cache(db_path)
-    
+    """Test cache initialization and basic operations."""
+    # Use a temp file for testing
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+        db_path = f.name
+
     try:
+        cache = Cache(db_path)
         await cache.init()
-        print("Cache initialization successful!")
-        
+
         # Check if tables were created by attempting to use the cache
         result = await cache.get_meta("test_key")
-        print(f"Test query successful, returned: {result}")
-        
+        assert result is None  # Should be None initially
+
         # Set a test value
         await cache.set_meta("test_key", "test_value")
-        print("Test value set successfully")
-        
+
         # Get it back
         result = await cache.get_meta("test_key")
-        print(f"Retrieved value: {result}")
-        
-        print("All tests passed!")
-        
-    except Exception as e:
-        print(f"Error during cache operations: {e}")
-        import traceback
-        traceback.print_exc()
+        assert result == "test_value"
+
+    finally:
+        # Clean up temp file
+        if os.path.exists(db_path):
+            os.unlink(db_path)
+
 
 if __name__ == "__main__":
     asyncio.run(test_cache())

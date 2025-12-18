@@ -3,41 +3,38 @@
 
 import asyncio
 import os
-from src.forex_signal_agent.main import Application
+import pytest
+from forex_signal_agent.main import Application
 
+
+@pytest.mark.asyncio
 async def test_app_init():
+    """Test application initialization with config file."""
     config_path = "config.yaml"
-    
-    print(f"Testing application initialization with config: {config_path}")
-    print(f"Config file exists: {os.path.exists(config_path)}")
-    
+
+    # Skip if config file doesn't exist
+    if not os.path.exists(config_path):
+        pytest.skip("config.yaml not found")
+
     app = Application(config_path)
-    
+
     try:
         await app.initialize()
-        print("Application initialization successful!")
-        
+
         # Check if cache tables were created by querying them
         result = await app.cache.get_meta("test_key")
-        print(f"Cache query successful, returned: {result}")
-        
+
         # Set a test value
         await app.cache.set_meta("test_key", "app_test_value")
-        print("Test value set successfully via app")
-        
+
         # Get it back
         result = await app.cache.get_meta("test_key")
-        print(f"Retrieved value via app: {result}")
-        
-        print("All tests passed!")
-        
-    except Exception as e:
-        print(f"Error during application initialization: {e}")
-        import traceback
-        traceback.print_exc()
+        assert result == "app_test_value"
+
     finally:
         if app.cache:
             await app.cleanup()
+
 
 if __name__ == "__main__":
     asyncio.run(test_app_init())

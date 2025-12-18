@@ -20,5 +20,12 @@ dependencies = [
     "redis>=5.0.0",  # Redis client with async support for Pub/Sub integration
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
+]
+
 [project.scripts]
 forex-signal-agent = "forex_signal_agent.main:main"

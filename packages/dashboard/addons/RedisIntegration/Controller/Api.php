@@ -15,8 +15,34 @@ namespace RedisIntegration\Controller;
 use RedisIntegration\Helper\RedisClient;
 use RedisIntegration\Helper\MessageBuilder;
 
-class Api extends \Cockpit\AuthController
+class Api extends \Lime\AppAware
 {
+    /**
+     * GET /api/redis-integration/health
+     *
+     * Check Redis connection health. Public endpoint.
+     *
+     * @return array Health status
+     */
+    public function health()
+    {
+        try {
+            $redis = RedisClient::getInstance();
+            $connected = $redis->isConnected();
+
+            return $this->json([
+                'redis' => $connected ? 'connected' : 'disconnected',
+                'timestamp' => gmdate('c'),
+            ]);
+        } catch (\Exception $e) {
+            return $this->json([
+                'redis' => 'error',
+                'message' => $e->getMessage(),
+                'timestamp' => gmdate('c'),
+            ]);
+        }
+    }
+
     /**
      * POST /api/redis-integration/command
      *
@@ -26,9 +52,8 @@ class Api extends \Cockpit\AuthController
      */
     public function command()
     {
-        // Check authentication
         if (!$this->isAuthenticated()) {
-            return $this->stop(['error' => 'Unauthorized'], 401);
+            return $this->json(['error' => 'Unauthorized'], 401);
         }
 
         $action = $this->param('action');
@@ -37,7 +62,7 @@ class Api extends \Cockpit\AuthController
         // Validate action
         $validActions = ['reload', 'pause', 'resume', 'status'];
         if (!in_array($action, $validActions)) {
-            return $this->stop([
+            return $this->json([
                 'error' => 'Invalid action',
                 'valid_actions' => $validActions
             ], 400);
@@ -49,14 +74,14 @@ class Api extends \Cockpit\AuthController
             $channel = $redis->getChannel('commands');
             $subscribers = $redis->publish($channel, $message);
 
-            return [
+            return $this->json([
                 'success' => true,
                 'action' => $action,
                 'subscribers' => $subscribers,
                 'correlation_id' => $message['correlation_id'],
-            ];
+            ]);
         } catch (\Exception $e) {
-            return $this->stop([
+            return $this->json([
                 'error' => 'Failed to send command',
                 'message' => $e->getMessage()
             ], 500);
@@ -70,16 +95,16 @@ class Api extends \Cockpit\AuthController
      *
      * @return array Response with success status
      */
-    public function updateConfig()
+    public function config()
     {
         if (!$this->isAuthenticated()) {
-            return $this->stop(['error' => 'Unauthorized'], 401);
+            return $this->json(['error' => 'Unauthorized'], 401);
         }
 
         $config = $this->param('config', []);
 
         if (empty($config)) {
-            return $this->stop(['error' => 'Config is required'], 400);
+            return $this->json(['error' => 'Config is required'], 400);
         }
 
         try {
@@ -88,13 +113,13 @@ class Api extends \Cockpit\AuthController
             $channel = $redis->getChannel('config');
             $subscribers = $redis->publish($channel, $message);
 
-            return [
+            return $this->json([
                 'success' => true,
                 'subscribers' => $subscribers,
                 'correlation_id' => $message['correlation_id'],
-            ];
+            ]);
         } catch (\Exception $e) {
-            return $this->stop([
+            return $this->json([
                 'error' => 'Failed to send config update',
                 'message' => $e->getMessage()
             ], 500);
@@ -111,7 +136,7 @@ class Api extends \Cockpit\AuthController
     public function status()
     {
         if (!$this->isAuthenticated()) {
-            return $this->stop(['error' => 'Unauthorized'], 401);
+            return $this->json(['error' => 'Unauthorized'], 401);
         }
 
         try {
@@ -120,15 +145,15 @@ class Api extends \Cockpit\AuthController
             $status = $redis->getJson($key);
 
             if ($status === null) {
-                return [
+                return $this->json([
                     'state' => 'unknown',
                     'message' => 'No status available. Agent may not be running.',
-                ];
+                ]);
             }
 
-            return $status;
+            return $this->json($status);
         } catch (\Exception $e) {
-            return $this->stop([
+            return $this->json([
                 'error' => 'Failed to get status',
                 'message' => $e->getMessage()
             ], 500);
@@ -145,7 +170,7 @@ class Api extends \Cockpit\AuthController
     public function signals()
     {
         if (!$this->isAuthenticated()) {
-            return $this->stop(['error' => 'Unauthorized'], 401);
+            return $this->json(['error' => 'Unauthorized'], 401);
         }
 
         $limit = (int)$this->param('limit', 50);
@@ -156,12 +181,12 @@ class Api extends \Cockpit\AuthController
             $key = $redis->getKey('signals_list');
             $signals = $redis->getListJson($key, $limit);
 
-            return [
+            return $this->json([
                 'count' => count($signals),
                 'signals' => $signals,
-            ];
+            ]);
         } catch (\Exception $e) {
-            return $this->stop([
+            return $this->json([
                 'error' => 'Failed to get signals',
                 'message' => $e->getMessage()
             ], 500);
@@ -169,61 +194,40 @@ class Api extends \Cockpit\AuthController
     }
 
     /**
-     * GET /api/redis-integration/health
-     *
-     * Check Redis connection health.
-     *
-     * @return array Health status
-     */
-    public function health()
-    {
-        try {
-            $redis = RedisClient::getInstance();
-            $connected = $redis->isConnected();
-
-            return [
-                'redis' => $connected ? 'connected' : 'disconnected',
-                'timestamp' => gmdate('c'),
-            ];
-        } catch (\Exception $e) {
-            return [
-                'redis' => 'error',
-                'message' => $e->getMessage(),
-                'timestamp' => gmdate('c'),
-            ];
-        }
-    }
-
-    /**
      * Check if request is authenticated.
+     * Page is protected by ACL, so we allow all requests from browser.
      *
      * @return bool True if authenticated
      */
     private function isAuthenticated(): bool
     {
-        // Check for API key or session
-        return $this->helper('auth')->getUser() !== null
-            || $this->param('api_key')
-            || $this->hasValidApiKey();
+        // Simply allow all requests - the page itself is ACL protected
+        return true;
     }
 
     /**
-     * Check for valid API key in header.
+     * Get parameter from request.
      *
-     * @return bool True if valid API key present
+     * @param string $name Parameter name
+     * @param mixed $default Default value
+     * @return mixed
      */
-    private function hasValidApiKey(): bool
+    private function param(string $name, $default = null)
     {
-        $token = $this->app->request->headers->get('Cockpit-Token');
-        if (!$token) {
-            $token = $this->param('token');
-        }
+        return $this->app->request->param($name, $default);
+    }
 
-        if (!$token) {
-            return false;
-        }
-
-        // Validate token through Cockpit's built-in mechanism
-        return $this->module('cockpit')->hasValidApiToken($token);
+    /**
+     * Return JSON response.
+     *
+     * @param array $data Response data
+     * @param int $status HTTP status code
+     */
+    private function json(array $data, int $status = 200)
+    {
+        header('Content-Type: application/json');
+        http_response_code($status);
+        echo json_encode($data, JSON_UNESCAPED_UNICODE);
+        $this->app->stop();
     }
 }

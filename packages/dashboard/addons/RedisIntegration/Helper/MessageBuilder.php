@@ -23,7 +23,7 @@ class MessageBuilder
             'timestamp' => gmdate('c'),
             'payload' => [
                 'action' => $action,
-                'params' => $params,
+                'params' => (object)$params, // Force object, not array
             ],
             'correlation_id' => self::uuid(),
         ];
@@ -43,6 +43,32 @@ class MessageBuilder
             'payload' => $config,
             'correlation_id' => self::uuid(),
         ];
+    }
+
+    /**
+     * Convert currency pair to Yahoo Finance format.
+     *
+     * Examples:
+     *   "EUR_USD" -> "EURUSD=X"
+     *   "EUR/USD" -> "EURUSD=X"
+     *   "EUR-USD" -> "EURUSD=X"
+     *   "EURUSD"  -> "EURUSD=X"
+     *   "EURUSD=X" -> "EURUSD=X" (already correct)
+     *
+     * @param string $pair Currency pair in any format
+     * @return string Yahoo Finance symbol
+     */
+    private static function toYahooSymbol(string $pair): string
+    {
+        // Already in Yahoo format
+        if (str_ends_with($pair, '=X')) {
+            return $pair;
+        }
+
+        // Remove common separators and convert to uppercase
+        $symbol = strtoupper(preg_replace('/[_\/\-\s]/', '', $pair));
+
+        return $symbol . '=X';
     }
 
     /**
@@ -77,19 +103,26 @@ class MessageBuilder
     {
         $config = [];
 
-        // Map pairs
+        // Map pairs - convert to Yahoo Finance format (EURUSD=X)
         if (isset($singletonData['pairs']) && is_array($singletonData['pairs'])) {
-            $config['pairs'] = $singletonData['pairs'];
+            $config['pairs'] = array_map(function ($pair) {
+                return self::toYahooSymbol($pair);
+            }, $singletonData['pairs']);
         }
 
         // Map timeframes
         if (isset($singletonData['timeframes']) && is_array($singletonData['timeframes'])) {
+            $timeframes = $singletonData['timeframes'];
+            // Handle case when Cockpit saves single repeater item as object instead of array
+            if (isset($timeframes['timeframe'])) {
+                $timeframes = [$timeframes]; // Wrap single item in array
+            }
             $config['timeframes'] = array_map(function ($tf) {
                 return [
                     'timeframe' => $tf['timeframe'] ?? '5',
                     'poll_interval_seconds' => (int)($tf['poll_interval_seconds'] ?? 60),
                 ];
-            }, $singletonData['timeframes']);
+            }, $timeframes);
         }
 
         // Map telegram settings
