@@ -33,29 +33,6 @@ services:
       timeout: 5s
       retries: 5
 
-  backend:
-    build:
-      context: ./packages/backend
-      dockerfile: Dockerfile
-    container_name: forex-backend
-    restart: unless-stopped
-    env_file:
-      - packages/agent/.env
-    environment:
-      - TZ=Europe/Moscow
-      - DATABASE_URL=postgresql+asyncpg://forex:forex@postgres:5432/forex_db
-      - REDIS_URL=redis://redis:6379/0
-    volumes:
-      - ./logs:/app/logs
-    ports:
-      - "8000:8000"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    command: ["uvicorn", "forex_backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
-
   dashboard:
     build:
       context: ./packages/dashboard
@@ -64,10 +41,13 @@ services:
     restart: unless-stopped
     environment:
       - TZ=Europe/Moscow
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
     ports:
-      - "5173:5173"
+      - "5173:8080"
     depends_on:
-      - backend
+      redis:
+        condition: service_healthy
 
   agent:
     build:
@@ -84,12 +64,16 @@ services:
       - TZ=Europe/Moscow
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
+      - REDIS_ENABLED=true
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
     volumes:
       - ./packages/agent/config.yaml:/app/config.yaml:ro
       - ./data:/app/data
       - ./logs:/app/logs
     depends_on:
-      - backend
+      redis:
+        condition: service_healthy
     command: ["forex-signal-agent", "--config", "/app/config.yaml"]
 
 volumes:

@@ -26,6 +26,20 @@ class BacktestConfig:
 
 
 @dataclass
+class RedisConfig:
+    """Redis configuration for Pub/Sub integration with Dashboard"""
+    enabled: bool = False
+    host: str = "redis"
+    port: int = 6379
+    db: int = 0
+    password: Optional[str] = None
+    status_interval_seconds: int = 30
+    reconnect_max_attempts: int = 10
+    reconnect_base_delay: float = 1.0
+    reconnect_max_delay: float = 60.0
+
+
+@dataclass
 class AppConfig:
     timezone: str = "Europe/Moscow"
     pairs: List[str] = field(default_factory=lambda: ["EUR_USD", "GBP_USD", "USD_JPY"])
@@ -37,6 +51,7 @@ class AppConfig:
     notify_hourly_summary: bool = True
     backtest: BacktestConfig = field(default_factory=BacktestConfig)
     sqlite_path: str = "./data/cache.db"
+    redis: RedisConfig = field(default_factory=RedisConfig)
 
 
 def load_config(path: Optional[str] = None) -> AppConfig:
@@ -51,6 +66,17 @@ def load_config(path: Optional[str] = None) -> AppConfig:
     cfg.telegram.bot_token = os.getenv("TELEGRAM_BOT_TOKEN", cfg.telegram.bot_token)
     cfg.telegram.chat_id = os.getenv("TELEGRAM_CHAT_ID", cfg.telegram.chat_id)
     cfg.sqlite_path = os.getenv("SQLITE_PATH", cfg.sqlite_path)
+
+    # Redis env overrides
+    if os.getenv("REDIS_ENABLED", "").lower() in ("true", "1", "yes"):
+        cfg.redis.enabled = True
+    cfg.redis.host = os.getenv("REDIS_HOST", cfg.redis.host)
+    if os.getenv("REDIS_PORT"):
+        try:
+            cfg.redis.port = int(os.getenv("REDIS_PORT", "6379"))
+        except ValueError:
+            pass
+    cfg.redis.password = os.getenv("REDIS_PASSWORD", cfg.redis.password)
 
     # Normalize timeframes to dataclass instances
     normalized_tfs: List[TimeframeJob] = []

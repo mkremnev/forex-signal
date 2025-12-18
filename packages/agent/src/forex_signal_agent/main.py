@@ -5,7 +5,7 @@ import asyncio
 import signal
 import sys
 from datetime import datetime, timezone
-from typing import List
+from typing import List, Optional, TYPE_CHECKING
 from contextlib import asynccontextmanager
 
 import pandas as pd
@@ -17,6 +17,9 @@ from .sqlite_cache import Cache
 from .analyzer import analyze_pair, Event
 from .exceptions import DataProviderException, AnalysisException, NotificationException
 from .logging_config import setup_logging
+
+if TYPE_CHECKING:
+    from .integration_manager import IntegrationManager
 
 # Set up structured logging
 setup_logging("INFO", "logs/agent.log")
@@ -160,28 +163,37 @@ async def hourly_summary(cfg: AppConfig, notifier: TelegramNotifier, cache: Cach
 class Application:
     def __init__(self, config_path: str):
         self.config_path = config_path
-        self.config = None
-        self.cache = None
-        self.notifier = None
-        self.client = None
+        self.config: Optional[AppConfig] = None
+        self.cache: Optional[Cache] = None
+        self.notifier: Optional[TelegramNotifier] = None
+        self.client: Optional[YahooFinanceClient] = None
         self.running = False
+        self.paused = False  # For pause/resume commands from Dashboard
+        self.integration: Optional[IntegrationManager] = None
         self.logger = logging.getLogger(__name__)
         
     async def initialize(self):
         """Initialize all components"""
         try:
             self.config = load_config(self.config_path)
-            
+
             self.logger.info(f"Initializing cache with path: {self.config.sqlite_path}")
             self.cache = Cache(self.config.sqlite_path)
             await self.cache.init()
-            
+
             self.notifier = TelegramNotifier(
-                self.config.telegram.bot_token, 
+                self.config.telegram.bot_token,
                 self.config.telegram.chat_id
             )
             self.client = YahooFinanceClient()
-            
+
+            # Initialize Redis integration if enabled
+            if self.config.redis.enabled:
+                from .integration_manager import IntegrationManager
+                self.integration = IntegrationManager(self, self.config.redis)
+                await self.integration.start()
+                self.logger.info("Redis integration initialized", extra={'event_type': 'redis_init'})
+
             self.logger.info("Application initialized successfully", extra={'event_type': 'app_init'})
         except Exception as e:
             self.logger.error(f"Failed to initialize application: {e}", extra={'event_type': 'init_error'})
@@ -190,6 +202,11 @@ class Application:
     async def cleanup(self):
         """Clean up resources"""
         try:
+            # Stop Redis integration first
+            if self.integration:
+                await self.integration.stop()
+                self.logger.info("Redis integration stopped", extra={'event_type': 'redis_cleanup'})
+
             if self.client:
                 await self.client.close()
             if self.notifier:
@@ -197,6 +214,16 @@ class Application:
             self.logger.info("Application cleaned up successfully", extra={'event_type': 'app_cleanup'})
         except Exception as e:
             self.logger.error(f"Error during cleanup: {e}", extra={'event_type': 'cleanup_error'})
+
+    def pause(self) -> None:
+        """Pause agent processing (called from Redis command)."""
+        self.paused = True
+        self.logger.info("Agent paused via command", extra={'event_type': 'agent_paused'})
+
+    def resume(self) -> None:
+        """Resume agent processing (called from Redis command)."""
+        self.paused = False
+        self.logger.info("Agent resumed via command", extra={'event_type': 'agent_resumed'})
             
     def signal_handler(self, signum, frame):
         """Handle shutdown signals gracefully"""
@@ -234,6 +261,11 @@ class Application:
         """Execute a single processing cycle"""
         start_loop = datetime.now(tz=timezone.utc)
 
+        # Check if agent is paused
+        if self.paused:
+            self.logger.debug("Skipping cycle - agent is paused")
+            return
+
         # Check if forex market is open (Sunday 22:00 GMT to Friday 22:00 GMT)
         if not _is_forex_market_open(start_loop):
             weekday = start_loop.weekday()
@@ -245,14 +277,36 @@ class Application:
             return
 
         tasks: List[asyncio.Task] = []
+        errors_count = 0
+
         for tf_job in self.config.timeframes:
             tf = tf_job.timeframe
             for sym in self.config.pairs:
                 tasks.append(asyncio.create_task(process_pair(self.config, self.cache, self.notifier, self.client, sym, tf)))
         if self.config.notify_hourly_summary and start_loop.minute == 0:
             tasks.append(asyncio.create_task(hourly_summary(self.config, self.notifier, self.cache)))
+
         if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            # Count errors
+            for result in results:
+                if isinstance(result, Exception):
+                    errors_count += 1
+
+        # Calculate cycle duration and publish metrics
+        cycle_end = datetime.now(tz=timezone.utc)
+        cycle_duration_ms = (cycle_end - start_loop).total_seconds() * 1000
+
+        # Publish metrics to Dashboard via Redis
+        if self.integration and self.config:
+            pairs_count = len(self.config.pairs) * len(self.config.timeframes)
+            await self.integration.publish_metrics(
+                pairs_processed=pairs_count,
+                cycle_duration_ms=cycle_duration_ms,
+                errors_in_cycle=errors_count,
+                active_pairs=self.config.pairs,
+                active_timeframes=[tf.timeframe for tf in self.config.timeframes]
+            )
 
 
 async def run_agent(args):

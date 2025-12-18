@@ -17,6 +17,7 @@ dependencies = [
     "yfinance>=0.2.54",
     "pandas-stubs==2.3.2.250926",
     "tenacity>=8.2.0",  # For retry mechanisms
+    "redis>=5.0.0",  # Redis client with async support for Pub/Sub integration
 ]
 
 [project.scripts]

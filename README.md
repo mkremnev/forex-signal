@@ -9,14 +9,12 @@ This project uses a monorepo structure with multiple packages:
 ```
 packages/
 ├── agent/       # Forex signal monitoring agent (Python)
-├── backend/     # FastAPI REST API and WebSocket server (Python)
 └── dashboard/   # React web dashboard (TypeScript)
 ```
 
 ### Package Overview
 
 - **agent**: Core monitoring service that analyzes forex pairs using technical indicators
-- **backend**: API server for managing signals, user authentication, and data persistence
 - **dashboard**: Web UI for real-time monitoring and configuration management
 
 ## 🚀 Features

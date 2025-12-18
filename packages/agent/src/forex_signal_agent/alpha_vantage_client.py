@@ -6,7 +6,6 @@ from typing import Optional, Tuple
 import httpx
 import pandas as pd
 
-
 ALPHA_TIMEFRAME_MAP = {
     # Alpha Vantage supports: 1min, 5min, 15min, 30min, 60min for intraday; daily via separate endpoint
     "1": "1min",
@@ -35,7 +34,9 @@ def _parse_symbol(symbol: str) -> Tuple[str, str]:
 
 
 class AlphaVantageClient:
-    def __init__(self, api_key: str, base_url: str = "https://www.alphavantage.co") -> None:
+    def __init__(
+        self, api_key: str, base_url: str = "https://www.alphavantage.co"
+    ) -> None:
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
         self._client = httpx.AsyncClient(base_url=self.base_url, timeout=30.0)
@@ -43,7 +44,9 @@ class AlphaVantageClient:
     async def close(self):
         await self._client.aclose()
 
-    async def get_forex_candles(self, symbol: str, resolution: str, start_ts: int, end_ts: int) -> pd.DataFrame:
+    async def get_forex_candles(
+        self, symbol: str, resolution: str, start_ts: int, end_ts: int
+    ) -> pd.DataFrame:
         from_sym, to_sym = _parse_symbol(symbol)
         if resolution == "D":
             # Use FX_DAILY
@@ -60,7 +63,9 @@ class AlphaVantageClient:
             data = r.json()
             ts_key = next((k for k in data.keys() if k.startswith("Time Series")), None)
             if not ts_key:
-                return pd.DataFrame(columns=["o", "h", "l", "c", "v"])  # Alpha Vantage FX daily has no volume
+                return pd.DataFrame(
+                    columns=["o", "h", "l", "c", "v"]
+                )  # Alpha Vantage FX daily has no volume
             ts = data.get(ts_key, {})
             records = []
             for t_str, vals in ts.items():
@@ -78,7 +83,9 @@ class AlphaVantageClient:
                 records.append((dt, o, h, l, c, 0.0))
             if not records:
                 return pd.DataFrame(columns=["o", "h", "l", "c", "v"])  # empty
-            df = pd.DataFrame(records, columns=["dt", "o", "h", "l", "c", "v"]).sort_values("dt")
+            df = pd.DataFrame(
+                records, columns=["dt", "o", "h", "l", "c", "v"]
+            ).sort_values("dt")
         else:
             # Intraday via FX_INTRADAY
             params = {
@@ -86,7 +93,7 @@ class AlphaVantageClient:
                 "symbol": from_sym,
                 "interval": resolution,  # e.g., 5min
                 "outputsize": "full",
-                "apikey": self.api_key
+                "apikey": self.api_key,
             }
             r = await self._client.get("/query", params=params)
             r.raise_for_status()
@@ -112,7 +119,9 @@ class AlphaVantageClient:
                 records.append((dt, o, h, l, c, v))
             if not records:
                 return pd.DataFrame(columns=["o", "h", "l", "c", "v"])  # empty
-            df = pd.DataFrame(records, columns=["dt", "o", "h", "l", "c", "v"]).sort_values("dt")
+            df = pd.DataFrame(
+                records, columns=["dt", "o", "h", "l", "c", "v"]
+            ).sort_values("dt")
 
         df.set_index("dt", inplace=True)
         df.index.name = "datetime"

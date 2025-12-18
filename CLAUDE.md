@@ -5,4 +5,4 @@
 
 Прогресс разработки кода в файле [progress.md](.memory_bank/progress.md)
 
-Используй в своей работе агентов для задач с python [python-pro.md](.claude/agents/python-pro.md), а для задач с nextjs [nextjs-architecture-expert.md](.claude/agents/nextjs-architecture-expert.md)
+Используй в своей работе агентов для задач с python [python-pro.md](.claude/agents/python-pro.md)

@@ -1,34 +1,27 @@
-# syntax=docker/dockerfile:1
+FROM cockpithq/cockpit:core-2.12.1-unit
 
-# Build stage
-FROM node:24-alpine AS builder
+# Install PHP Redis extension
+# Cockpit core image is based on Alpine with PHP
+USER root
 
-WORKDIR /app
+RUN apk add --no-cache \
+    php82-pecl-redis \
+    && rm -rf /var/cache/apk/*
 
-# Copy package files
-COPY package.json package-lock.json* ./
+# Copy configuration
+COPY ./config/ /var/www/html/config/
 
-# Install dependencies
-RUN npm ci
+# Copy Redis integration addon
+COPY ./addons/ /var/www/html/addons/
 
-# Copy source code
-COPY . .
+# Copy storage (if needed for initial data)
+COPY ./storage/ /var/www/html/storage/
 
-# Build application
-RUN npm run build
+# Ensure proper permissions
+RUN chown -R unit:unit /var/www/html/config \
+    && chown -R unit:unit /var/www/html/addons \
+    && chown -R unit:unit /var/www/html/storage
 
-# Production stage
-FROM node:24-alpine
+USER unit
 
-WORKDIR /app
-
-# Install serve for serving static files
-RUN npm install -g serve
-
-# Copy built assets from builder
-COPY --from=builder /app/dist /app/dist
-
-EXPOSE 5173
-
-# Serve the built application
-CMD ["serve", "-s", "dist", "-l", "5173"]
+EXPOSE 8080
