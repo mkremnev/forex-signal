@@ -23,6 +23,7 @@ COPY ./src /app/src
 COPY ./config.yaml /app/config.yaml
 
 RUN pip install --upgrade pip \
+    && pip install numpy --no-binary numpy \
     && pip install .
 
 # Create user/group and set ownership based on the provided UID/GID
