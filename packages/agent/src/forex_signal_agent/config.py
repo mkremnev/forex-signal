@@ -40,6 +40,68 @@ class RedisConfig:
 
 
 @dataclass
+class MigrationConfig:
+    """Feature flags for probabilistic analyzer migration"""
+    use_probability_analyzer: bool = False
+    log_both_analyzers: bool = True
+    publish_to_test_channel: bool = True
+
+
+@dataclass
+class CorrelationConfig:
+    """Configuration for correlation analysis"""
+    lookback_hours: int = 24
+    min_data_points: int = 20
+    high_correlation_threshold: float = 0.7
+
+
+@dataclass
+class VolatilityConfig:
+    """Configuration for volatility analysis"""
+    atr_period: int = 14
+    consolidation_threshold: float = 0.01  # 1% ATR/price ratio
+
+
+@dataclass
+class ProbabilityConfig:
+    """Configuration for probability model"""
+    confidence_threshold: float = 0.4
+    high_confidence_threshold: float = 0.6
+    forex_weights: dict = field(default_factory=lambda: {
+        "roc": 0.33,
+        "volatility": 0.33,
+        "correlation": 0.33
+    })
+    crypto_weights: dict = field(default_factory=lambda: {
+        "roc": 0.25,
+        "volatility": 0.25,
+        "volume": 0.25,
+        "correlation": 0.25
+    })
+
+
+@dataclass
+class CryptoConfig:
+    """Configuration for cryptocurrency data provider"""
+    enabled: bool = False
+    pairs: List[str] = field(default_factory=lambda: ["BTCUSDT", "ETHUSDT", "SOLUSDT"])
+    sandbox: bool = False
+
+
+@dataclass
+class BacktestV2Config:
+    """Configuration for probabilistic backtest engine"""
+    enabled: bool = False
+    initial_capital: float = 10000.0
+    position_size_pct: float = 0.02  # 2% per trade
+    stop_loss_pct: float = 0.02  # 2%
+    take_profit_pct: float = 0.04  # 4%
+    max_open_trades: int = 3
+    slippage_pct: float = 0.001  # 0.1%
+    commission_pct: float = 0.001  # 0.1%
+
+
+@dataclass
 class AppConfig:
     timezone: str = "Europe/Moscow"
     pairs: List[str] = field(default_factory=lambda: ["EUR_USD", "GBP_USD", "USD_JPY"])
@@ -52,6 +114,13 @@ class AppConfig:
     backtest: BacktestConfig = field(default_factory=BacktestConfig)
     sqlite_path: str = "./data/cache.db"
     redis: RedisConfig = field(default_factory=RedisConfig)
+    # Probabilistic analyzer migration config
+    migration: MigrationConfig = field(default_factory=MigrationConfig)
+    correlation: CorrelationConfig = field(default_factory=CorrelationConfig)
+    volatility: VolatilityConfig = field(default_factory=VolatilityConfig)
+    probability: ProbabilityConfig = field(default_factory=ProbabilityConfig)
+    crypto: CryptoConfig = field(default_factory=CryptoConfig)
+    backtest_v2: BacktestV2Config = field(default_factory=BacktestV2Config)
 
 
 def load_config(path: Optional[str] = None) -> AppConfig:
@@ -77,6 +146,12 @@ def load_config(path: Optional[str] = None) -> AppConfig:
         except ValueError:
             pass
     cfg.redis.password = os.getenv("REDIS_PASSWORD", cfg.redis.password)
+
+    # Migration env overrides
+    if os.getenv("PROBABILITY_ANALYZER", "").lower() in ("true", "1", "yes"):
+        cfg.migration.use_probability_analyzer = True
+    if os.getenv("CRYPTO_ENABLED", "").lower() in ("true", "1", "yes"):
+        cfg.crypto.enabled = True
 
     # Normalize timeframes to dataclass instances
     normalized_tfs: List[TimeframeJob] = []
