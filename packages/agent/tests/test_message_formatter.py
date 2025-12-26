@@ -256,3 +256,122 @@ class TestFormatVolatilityAlert:
         assert "Нормальная волатильность" in result
         assert "1.50%" in result
         assert "Рынок в консолидации" not in result
+
+
+class TestFormatProbabilitySignalWithMarketContext:
+    """Tests for format_probability_signal with market context."""
+
+    def test_format_with_risk_on_context(self):
+        """Test formatting with risk-on market context."""
+        event = MockAnalysisEvent(
+            event_type="probability_signal",
+            symbol="EUR_USD",
+            timeframe="1h",
+            timestamp=datetime.now(timezone.utc),
+            importance=2,
+            data={
+                "direction": "upward",
+                "confidence": 0.65,
+                "probabilities": {
+                    "upward": 0.65,
+                    "downward": 0.25,
+                    "consolidation": 0.10,
+                },
+                "is_actionable": True,
+                "market_sentiment": "risk_on",
+                "market_reasoning": "BTC +3.2% supports risk assets",
+            },
+        )
+
+        result = format_probability_signal(event)
+
+        assert "EUR_USD" in result
+        assert "Risk-On" in result
+        assert "🟢" in result  # risk-on emoji
+        assert "BTC +3.2% supports risk assets" in result
+
+    def test_format_with_risk_off_context(self):
+        """Test formatting with risk-off market context."""
+        event = MockAnalysisEvent(
+            event_type="probability_signal",
+            symbol="USD_JPY",
+            timeframe="4h",
+            timestamp=datetime.now(timezone.utc),
+            importance=1,
+            data={
+                "direction": "upward",
+                "confidence": 0.55,
+                "probabilities": {
+                    "upward": 0.55,
+                    "downward": 0.30,
+                    "consolidation": 0.15,
+                },
+                "is_actionable": False,
+                "market_sentiment": "risk_off",
+                "market_reasoning": "risk-off supports safe haven flow",
+            },
+        )
+
+        result = format_probability_signal(event)
+
+        assert "USD_JPY" in result
+        assert "Risk-Off" in result
+        assert "🔴" in result  # risk-off emoji
+        assert "safe haven" in result
+
+    def test_format_with_neutral_context(self):
+        """Test formatting with neutral market context."""
+        event = MockAnalysisEvent(
+            event_type="probability_signal",
+            symbol="GBP_USD",
+            timeframe="1h",
+            timestamp=datetime.now(timezone.utc),
+            importance=1,
+            data={
+                "direction": "consolidation",
+                "confidence": 0.45,
+                "probabilities": {
+                    "upward": 0.30,
+                    "downward": 0.25,
+                    "consolidation": 0.45,
+                },
+                "is_actionable": False,
+                "market_sentiment": "neutral",
+                "market_reasoning": "balanced_market",
+            },
+        )
+
+        result = format_probability_signal(event)
+
+        assert "GBP_USD" in result
+        assert "⚪" in result  # neutral emoji
+
+    def test_format_without_market_context(self):
+        """Test formatting without market context (backward compatible)."""
+        event = MockAnalysisEvent(
+            event_type="probability_signal",
+            symbol="EUR_USD",
+            timeframe="1h",
+            timestamp=datetime.now(timezone.utc),
+            importance=1,
+            data={
+                "direction": "upward",
+                "confidence": 0.50,
+                "probabilities": {
+                    "upward": 0.50,
+                    "downward": 0.30,
+                    "consolidation": 0.20,
+                },
+                "is_actionable": False,
+                # No market_sentiment or market_reasoning
+            },
+        )
+
+        result = format_probability_signal(event)
+
+        # Should still work without market context
+        assert "EUR_USD" in result
+        assert "Рост" in result
+        # Should not contain market context section
+        assert "Risk-On" not in result
+        assert "Risk-Off" not in result

@@ -10,12 +10,16 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
+from typing import TYPE_CHECKING, Optional
 
 import pandas as pd
 
 from .correlation import CorrelationAnalyzer
 from .probability import Direction, ProbabilityModel, ProbabilityResult, ProbabilityWeights
 from .volatility import VolatilityAnalyzer, VolatilityRegime, VolatilityResult
+
+if TYPE_CHECKING:
+    from .aggregation import MarketSentiment
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +63,7 @@ class AnalysisResult:
         volatility: Volatility analysis result
         events: List of generated events
         timestamp: Analysis timestamp
+        market_sentiment: Aggregated market sentiment context (if available)
     """
 
     symbol: str
@@ -67,6 +72,7 @@ class AnalysisResult:
     volatility: VolatilityResult | None
     events: list[AnalysisEvent]
     timestamp: datetime
+    market_sentiment: Optional["MarketSentiment"] = None
 
 
 class ProbabilisticAnalyzer:
@@ -163,6 +169,7 @@ class ProbabilisticAnalyzer:
         df: pd.DataFrame,
         symbol: str,
         timeframe: str,
+        market_sentiment: Optional["MarketSentiment"] = None,
     ) -> AnalysisResult:
         """Analyze a single instrument.
 
@@ -170,6 +177,7 @@ class ProbabilisticAnalyzer:
             df: OHLCV DataFrame
             symbol: Instrument symbol
             timeframe: Analysis timeframe (e.g., "1h", "4h")
+            market_sentiment: Aggregated market sentiment for context
 
         Returns:
             AnalysisResult with probability, volatility, and events
@@ -180,9 +188,11 @@ class ProbabilisticAnalyzer:
         # Volatility analysis
         volatility_result = self._volatility.analyze(df, symbol)
 
-        # Probability analysis (with correlation context)
+        # Probability analysis (with correlation and market sentiment context)
         avg_correlation = self._correlation.get_average_correlation(symbol)
-        probability_result = self._probability.predict(df, symbol, avg_correlation)
+        probability_result = self._probability.predict(
+            df, symbol, avg_correlation, market_sentiment
+        )
 
         # Generate events
         if probability_result:
@@ -204,6 +214,7 @@ class ProbabilisticAnalyzer:
             volatility=volatility_result,
             events=events,
             timestamp=now,
+            market_sentiment=market_sentiment,
         )
 
     def analyze_batch(
@@ -258,22 +269,31 @@ class ProbabilisticAnalyzer:
             2 if result.confidence >= self.HIGH_CONFIDENCE_THRESHOLD else 1
         )
 
+        # Build event data
+        event_data = {
+            "direction": result.direction.value,
+            "probabilities": {
+                d.value: round(p, 4)
+                for d, p in result.probabilities.items()
+            },
+            "confidence": round(result.confidence, 4),
+            "is_actionable": result.is_actionable,
+            "factors": result.factors,
+        }
+
+        # Add market context if available
+        if result.market_context is not None:
+            event_data["market_sentiment"] = result.market_context.sentiment
+            event_data["market_modifier"] = result.market_context.modifier
+            event_data["market_reasoning"] = result.market_context.reasoning
+
         event = AnalysisEvent(
             event_type=EventType.PROBABILITY_SIGNAL,
             symbol=result.symbol,
             timeframe=timeframe,
             timestamp=timestamp,
             importance=importance,
-            data={
-                "direction": result.direction.value,
-                "probabilities": {
-                    d.value: round(p, 4)
-                    for d, p in result.probabilities.items()
-                },
-                "confidence": round(result.confidence, 4),
-                "is_actionable": result.is_actionable,
-                "factors": result.factors,
-            },
+            data=event_data,
         )
 
         events.append(event)

@@ -5,8 +5,18 @@ Contains:
 - VolatilityAnalyzer: ATR-based volatility metrics
 - ProbabilityModel: 24h directional probability forecasting
 - ProbabilisticAnalyzer: Main analyzer orchestrating all components
+- MarketSentimentAggregator: Cross-market sentiment analysis
 """
 
+from .aggregation import (
+    GlobalVolatilityIndicators,
+    MarketSentiment,
+    MarketSentimentAggregator,
+    RiskIndicators,
+    RiskSentiment,
+    SafeHavenIndicators,
+    VolatilityRegimeGlobal,
+)
 from .analyzer_v2 import (
     AnalysisEvent,
     AnalysisResult,
@@ -16,6 +26,7 @@ from .analyzer_v2 import (
 from .correlation import CorrelationAnalyzer, CorrelationResult
 from .probability import (
     Direction,
+    MarketContextModifier,
     ProbabilityModel,
     ProbabilityResult,
     ProbabilityWeights,
@@ -23,6 +34,14 @@ from .probability import (
 from .volatility import VolatilityAnalyzer, VolatilityRegime, VolatilityResult
 
 __all__ = [
+    # Aggregation
+    "GlobalVolatilityIndicators",
+    "MarketSentiment",
+    "MarketSentimentAggregator",
+    "RiskIndicators",
+    "RiskSentiment",
+    "SafeHavenIndicators",
+    "VolatilityRegimeGlobal",
     # Correlation
     "CorrelationAnalyzer",
     "CorrelationResult",
@@ -32,6 +51,7 @@ __all__ = [
     "VolatilityResult",
     # Probability
     "Direction",
+    "MarketContextModifier",
     "ProbabilityModel",
     "ProbabilityResult",
     "ProbabilityWeights",

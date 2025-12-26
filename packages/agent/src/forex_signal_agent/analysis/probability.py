@@ -9,10 +9,13 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Protocol
+from typing import TYPE_CHECKING, Dict, Optional, Protocol, Tuple
 
 import numpy as np
 import pandas as pd
+
+if TYPE_CHECKING:
+    from .aggregation import MarketSentiment
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +56,23 @@ class ProbabilityWeights:
 
 
 @dataclass
+class MarketContextModifier:
+    """Market context modifier for probability adjustments.
+
+    Attributes:
+        sentiment: Market sentiment (risk_on, risk_off, neutral)
+        modifier: Probability modifier (0.8 - 1.2)
+        adjusted_confidence: Confidence after market context adjustment
+        reasoning: Explanation of the modification
+    """
+
+    sentiment: str
+    modifier: float
+    adjusted_confidence: float
+    reasoning: str
+
+
+@dataclass
 class ProbabilityResult:
     """Result of probability analysis.
 
@@ -71,6 +91,7 @@ class ProbabilityResult:
     confidence: float
     is_actionable: bool
     factors: dict[str, float] = field(default_factory=dict)
+    market_context: Optional[MarketContextModifier] = None
 
     @property
     def upward_probability(self) -> float:
@@ -96,6 +117,7 @@ class ProbabilityModelProtocol(Protocol):
         df: pd.DataFrame,
         symbol: str,
         avg_correlation: float | None = None,
+        market_sentiment: Optional["MarketSentiment"] = None,
     ) -> ProbabilityResult | None:
         """Predict direction probabilities.
 
@@ -103,6 +125,7 @@ class ProbabilityModelProtocol(Protocol):
             df: OHLCV DataFrame
             symbol: Instrument symbol
             avg_correlation: Average correlation with other instruments
+            market_sentiment: Aggregated market sentiment for context
 
         Returns:
             ProbabilityResult or None if prediction fails
@@ -156,6 +179,7 @@ class ProbabilityModel:
         df: pd.DataFrame,
         symbol: str,
         avg_correlation: float | None = None,
+        market_sentiment: Optional["MarketSentiment"] = None,
     ) -> ProbabilityResult | None:
         """Predict direction probabilities.
 
@@ -163,6 +187,7 @@ class ProbabilityModel:
             df: OHLCV DataFrame with close, high, low, volume columns
             symbol: Instrument symbol
             avg_correlation: Average correlation with other instruments
+            market_sentiment: Aggregated market sentiment for context
 
         Returns:
             ProbabilityResult or None if prediction fails
@@ -193,6 +218,17 @@ class ProbabilityModel:
         # Determine if actionable
         is_actionable = self._is_actionable(direction, confidence)
 
+        # Apply market context if available
+        market_context: Optional[MarketContextModifier] = None
+        if market_sentiment is not None:
+            probabilities, market_context = self._apply_market_context(
+                probabilities, symbol, market_sentiment
+            )
+            # Recalculate direction and confidence after context adjustment
+            direction = self._classify_direction(probabilities)
+            confidence = self._calculate_confidence(probabilities)
+            is_actionable = self._is_actionable(direction, confidence)
+
         return ProbabilityResult(
             symbol=symbol,
             direction=direction,
@@ -200,6 +236,7 @@ class ProbabilityModel:
             confidence=confidence,
             is_actionable=is_actionable,
             factors=factors,
+            market_context=market_context,
         )
 
     def _calculate_factors(
@@ -462,4 +499,89 @@ class ProbabilityModel:
         return (
             confidence >= self.HIGH_CONFIDENCE_THRESHOLD
             and direction != Direction.CONSOLIDATION
+        )
+
+    def _apply_market_context(
+        self,
+        probabilities: Dict[Direction, float],
+        symbol: str,
+        sentiment: "MarketSentiment",
+    ) -> Tuple[Dict[Direction, float], MarketContextModifier]:
+        """Apply market sentiment to adjust probabilities.
+
+        Rules:
+        - Risk-on + risk assets (EUR, GBP, BTC, ETH) -> upward +10%
+        - Risk-off + risk assets -> downward +10%
+        - Risk-off + safe havens (JPY, CHF, Gold) -> upward +10%
+        - Crisis volatility -> consolidation +15%
+
+        Args:
+            probabilities: Current direction probabilities
+            symbol: Instrument symbol
+            sentiment: Aggregated market sentiment
+
+        Returns:
+            Tuple of (adjusted_probabilities, MarketContextModifier)
+        """
+        from .aggregation import RiskSentiment, VolatilityRegimeGlobal
+
+        # Identify asset type
+        is_risk_asset = any(x in symbol.upper() for x in ["EUR", "GBP", "AUD", "NZD", "BTC", "ETH", "SOL"])
+        is_safe_haven = any(x in symbol.upper() for x in ["JPY", "CHF", "GC=F", "GOLD"])
+
+        modifier = 1.0
+        reasoning = "neutral market"
+
+        # Apply sentiment-based modifications
+        if sentiment.risk_sentiment == RiskSentiment.RISK_ON:
+            if is_risk_asset:
+                modifier = 1.1
+                reasoning = "risk-on supports this risk asset"
+            elif is_safe_haven:
+                modifier = 0.95
+                reasoning = "risk-on reduces safe haven demand"
+        elif sentiment.risk_sentiment == RiskSentiment.RISK_OFF:
+            if is_risk_asset:
+                modifier = 0.9
+                reasoning = "risk-off pressures this risk asset"
+            elif is_safe_haven:
+                modifier = 1.1
+                reasoning = "risk-off supports safe haven flow"
+
+        # Create a copy of probabilities
+        adjusted = dict(probabilities)
+
+        # Apply volatility adjustment for crisis regime
+        if sentiment.volatility_indicators.regime == VolatilityRegimeGlobal.CRISIS:
+            # Boost consolidation in crisis
+            adjusted[Direction.CONSOLIDATION] = adjusted.get(Direction.CONSOLIDATION, 0.0) + 0.15
+            reasoning += " | high volatility favors consolidation"
+
+        # Adjust directional probabilities based on modifier
+        if modifier > 1.0:
+            # Boost upward probability
+            adjusted[Direction.UPWARD] = adjusted.get(Direction.UPWARD, 0.0) * modifier
+        elif modifier < 1.0:
+            # Boost downward probability (inverse of modifier)
+            adjusted[Direction.DOWNWARD] = adjusted.get(Direction.DOWNWARD, 0.0) * (2 - modifier)
+
+        # Renormalize to sum to 1.0
+        total = sum(adjusted.values())
+        if total > 0:
+            adjusted = {d: p / total for d, p in adjusted.items()}
+
+        # Calculate adjusted confidence
+        sorted_probs = sorted(adjusted.values(), reverse=True)
+        adjusted_confidence = (sorted_probs[0] - sorted_probs[1]) * sentiment.confidence if len(sorted_probs) >= 2 else 0.0
+
+        logger.debug(
+            f"Market context for {symbol}: {sentiment.risk_sentiment.value}, "
+            f"modifier={modifier:.2f}, reasoning={reasoning}"
+        )
+
+        return adjusted, MarketContextModifier(
+            sentiment=sentiment.risk_sentiment.value,
+            modifier=modifier,
+            adjusted_confidence=adjusted_confidence,
+            reasoning=reasoning,
         )

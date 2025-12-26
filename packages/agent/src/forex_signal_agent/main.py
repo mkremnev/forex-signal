@@ -13,6 +13,8 @@ import pandas as pd
 
 from .analysis import (
     EventType,
+    MarketSentiment,
+    MarketSentimentAggregator,
     ProbabilisticAnalyzer,
     ProbabilityWeights,
 )
@@ -124,6 +126,7 @@ async def process_pair_probabilistic(
     symbol: str,
     timeframe: str,
     integration: Optional["IntegrationManager"] = None,
+    market_sentiment: Optional[MarketSentiment] = None,
 ):
     """Process a single pair (forex or crypto) using probabilistic analysis."""
     try:
@@ -135,8 +138,8 @@ async def process_pair_probabilistic(
             logger.warning(f"No data returned for {symbol} on {timeframe}")
             return
 
-        # Run probabilistic analysis
-        result = analyzer.analyze(candles, symbol, timeframe)
+        # Run probabilistic analysis with market sentiment context
+        result = analyzer.analyze(candles, symbol, timeframe, market_sentiment)
 
         # Process events
         cooldown_sec = cfg.telegram.message_cooldown_minutes * 60
@@ -249,6 +252,7 @@ class Application:
         self.paused = False  # For pause/resume commands from Dashboard
         self.integration: Optional[IntegrationManager] = None
         self.probabilistic_analyzer: Optional[ProbabilisticAnalyzer] = None
+        self.sentiment_aggregator: Optional[MarketSentimentAggregator] = None
         self.logger = logging.getLogger(__name__)
 
     async def initialize(self):
@@ -303,6 +307,19 @@ class Application:
                 "Probabilistic analyzer initialized",
                 extra={"event_type": "probabilistic_analyzer_init"},
             )
+
+            # Initialize sentiment aggregator if enabled
+            if self.config.sentiment.enabled:
+                self.sentiment_aggregator = MarketSentimentAggregator(
+                    roc_lookback=self.config.sentiment.roc_lookback,
+                    atr_period=self.config.volatility.atr_period,
+                    risk_assets=self.config.sentiment.risk_assets,
+                    safe_haven_assets=self.config.sentiment.safe_haven_assets,
+                )
+                self.logger.info(
+                    "Market sentiment aggregator initialized",
+                    extra={"event_type": "sentiment_aggregator_init"},
+                )
 
             self.logger.info(
                 "Application initialized successfully", extra={"event_type": "app_init"}
@@ -455,6 +472,24 @@ class Application:
         except Exception as e:
             self.logger.warning(f"Failed to update correlations: {e}")
 
+        # Aggregate market sentiment BEFORE per-instrument analysis
+        market_sentiment: Optional[MarketSentiment] = None
+        if self.sentiment_aggregator and all_data:
+            try:
+                market_sentiment = self.sentiment_aggregator.aggregate(all_data)
+                self.logger.info(
+                    f"Market sentiment: {market_sentiment.risk_sentiment.value} "
+                    f"(confidence={market_sentiment.confidence:.2%})",
+                    extra={
+                        "event_type": "market_sentiment",
+                        "sentiment": market_sentiment.risk_sentiment.value,
+                        "confidence": market_sentiment.confidence,
+                        "dominant_factor": market_sentiment.dominant_factor,
+                    },
+                )
+            except Exception as e:
+                self.logger.warning(f"Failed to aggregate market sentiment: {e}")
+
         tasks: List[asyncio.Task] = []
         errors_count = 0
 
@@ -473,6 +508,7 @@ class Application:
                             sym,
                             tf,
                             self.integration,
+                            market_sentiment=market_sentiment,
                         )
                     )
                 )
@@ -493,6 +529,7 @@ class Application:
                                 sym,
                                 tf,
                                 self.integration,
+                                market_sentiment=market_sentiment,
                             )
                         )
                     )

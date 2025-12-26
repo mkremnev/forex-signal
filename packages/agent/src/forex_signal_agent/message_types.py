@@ -163,12 +163,39 @@ class ProbabilitySignalPayload(BaseModel):
     factors: Dict[str, float] = Field(default_factory=dict)
     volatility_regime: Optional[str] = None
     atr_percent: Optional[float] = None
+    # Market context fields
+    market_sentiment: Optional[str] = None
+    market_modifier: Optional[float] = None
+    market_reasoning: Optional[str] = None
 
 
 class ProbabilitySignalMessage(BaseMessage):
     """Probability signal message from Agent to Dashboard."""
     type: Literal["probability_signal"] = "probability_signal"
     payload: ProbabilitySignalPayload
+
+
+# =============================================================================
+# Agent -> Dashboard: Market Sentiment
+# =============================================================================
+
+class MarketSentimentPayload(BaseModel):
+    """Payload for market sentiment updates."""
+    risk_sentiment: str  # "risk_on", "risk_off", "neutral"
+    confidence: float
+    dominant_factor: str
+    btc_roc_24h: float = 0.0
+    eth_roc_24h: float = 0.0
+    gold_roc_24h: float = 0.0
+    volatility_regime: str = "normal"
+    summary: str
+    timestamp: datetime = Field(default_factory=_utc_now)
+
+
+class MarketSentimentMessage(BaseMessage):
+    """Market sentiment message from Agent to Dashboard."""
+    type: Literal["market_sentiment"] = "market_sentiment"
+    payload: MarketSentimentPayload
 
 
 # =============================================================================
@@ -224,6 +251,7 @@ OutgoingMessage = Union[
     SignalMessage,
     MetricsMessage,
     ProbabilitySignalMessage,
+    MarketSentimentMessage,
     CorrelationMatrixMessage,
 ]
 

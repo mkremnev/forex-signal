@@ -69,6 +69,16 @@ class MockCryptoConfig:
 
 
 @dataclass
+class MockSentimentConfig:
+    enabled: bool = True
+    roc_lookback: int = 24
+    risk_threshold: float = 0.3
+    safe_haven_threshold: float = 0.3
+    risk_assets: List[str] = field(default_factory=lambda: ["BTCUSDT", "ETHUSDT"])
+    safe_haven_assets: List[str] = field(default_factory=lambda: ["GC=F", "USDJPY=X"])
+
+
+@dataclass
 class MockAppConfig:
     timezone: str = "Europe/Moscow"
     pairs: List[str] = field(default_factory=lambda: ["EUR_USD", "GBP_USD"])
@@ -87,6 +97,7 @@ class MockAppConfig:
     volatility: MockVolatilityConfig = field(default_factory=MockVolatilityConfig)
     probability: MockProbabilityConfig = field(default_factory=MockProbabilityConfig)
     crypto: MockCryptoConfig = field(default_factory=MockCryptoConfig)
+    sentiment: MockSentimentConfig = field(default_factory=MockSentimentConfig)
 
 
 class TestProbabilisticAnalyzerWiring:

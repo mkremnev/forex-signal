@@ -34,6 +34,19 @@ REGIME_NAMES = {
     "extreme": "Экстремальная волатильность",
 }
 
+# Sentiment names and emojis
+SENTIMENT_NAMES = {
+    "risk_on": "Risk-On",
+    "risk_off": "Risk-Off",
+    "neutral": "Нейтральный",
+}
+
+SENTIMENT_EMOJIS = {
+    "risk_on": "🟢",
+    "risk_off": "🔴",
+    "neutral": "⚪",
+}
+
 
 def _confidence_bar(confidence: float) -> str:
     """
@@ -86,6 +99,19 @@ def format_probability_signal(event: "AnalysisEvent") -> str:
             prob_name = DIRECTION_NAMES.get(prob_key, prob_key)
             prob_emoji = DIRECTION_EMOJIS.get(prob_key, "")
             lines.append(f"  {prob_emoji} {prob_name}: {prob_value:.1%}")
+
+    # Add market context section if available
+    market_sentiment = data.get("market_sentiment")
+    market_reasoning = data.get("market_reasoning")
+
+    if market_sentiment:
+        sentiment_emoji = SENTIMENT_EMOJIS.get(market_sentiment, "⚪")
+        sentiment_name = SENTIMENT_NAMES.get(market_sentiment, market_sentiment)
+        lines.append("")
+        lines.append(f"{sentiment_emoji} *Контекст:* {sentiment_name}")
+
+        if market_reasoning:
+            lines.append(f"  _{market_reasoning}_")
 
     if is_actionable:
         lines.append("")

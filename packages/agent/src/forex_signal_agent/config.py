@@ -102,6 +102,17 @@ class BacktestV2Config:
 
 
 @dataclass
+class SentimentConfig:
+    """Configuration for market sentiment aggregation"""
+    enabled: bool = True
+    roc_lookback: int = 24
+    risk_threshold: float = 0.3
+    safe_haven_threshold: float = 0.3
+    risk_assets: List[str] = field(default_factory=lambda: ["BTCUSDT", "ETHUSDT"])
+    safe_haven_assets: List[str] = field(default_factory=lambda: ["GC=F", "USDJPY=X"])
+
+
+@dataclass
 class AppConfig:
     timezone: str = "Europe/Moscow"
     pairs: List[str] = field(default_factory=lambda: ["EUR_USD", "GBP_USD", "USD_JPY"])
@@ -121,6 +132,7 @@ class AppConfig:
     probability: ProbabilityConfig = field(default_factory=ProbabilityConfig)
     crypto: CryptoConfig = field(default_factory=CryptoConfig)
     backtest_v2: BacktestV2Config = field(default_factory=BacktestV2Config)
+    sentiment: SentimentConfig = field(default_factory=SentimentConfig)
 
 
 def load_config(path: Optional[str] = None) -> AppConfig:
