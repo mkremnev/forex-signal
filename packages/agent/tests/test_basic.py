@@ -15,11 +15,11 @@ def empty_dataframe():
 def sample_ohlcv_data():
     """Sample OHLCV data for indicator tests."""
     return pd.DataFrame({
-        "o": [1.0, 1.1, 1.2, 1.3, 1.4],
-        "h": [1.05, 1.15, 1.25, 1.35, 1.45],
-        "l": [0.95, 1.05, 1.15, 1.25, 1.35],
-        "c": [1.02, 1.12, 1.22, 1.32, 1.42],
-        "v": [1000, 1100, 1200, 1300, 1400],
+        "open": [1.0, 1.1, 1.2, 1.3, 1.4],
+        "high": [1.05, 1.15, 1.25, 1.35, 1.45],
+        "low": [0.95, 1.05, 1.15, 1.25, 1.35],
+        "close": [1.02, 1.12, 1.22, 1.32, 1.42],
+        "volume": [1000, 1100, 1200, 1300, 1400],
     })
 
 
@@ -58,7 +58,7 @@ class TestAnalyzer:
 
 class TestIndicators:
     EXPECTED_COLUMNS = {
-        "o", "h", "l", "c", "v",
+        "open", "high", "low", "close", "volume",
         "ema20", "ema50", "adx",
         "macd", "macd_signal", "macd_hist", "rsi",
     }

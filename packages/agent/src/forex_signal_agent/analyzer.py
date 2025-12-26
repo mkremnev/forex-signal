@@ -292,7 +292,7 @@ def _analyze_pivot_levels(
     if not pivots:
         return events
 
-    current_price = float(last_bar["c"]) if pd.notna(last_bar.get("c")) else None
+    current_price = float(last_bar["close"]) if pd.notna(last_bar.get("close")) else None
     if current_price is None:
         return events
 

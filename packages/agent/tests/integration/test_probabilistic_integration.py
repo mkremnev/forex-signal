@@ -62,6 +62,13 @@ class MockProbabilityConfig:
 
 
 @dataclass
+class MockCryptoConfig:
+    enabled: bool = False
+    pairs: List[str] = field(default_factory=lambda: ["BTCUSDT", "ETHUSDT"])
+    sandbox: bool = False
+
+
+@dataclass
 class MockAppConfig:
     timezone: str = "Europe/Moscow"
     pairs: List[str] = field(default_factory=lambda: ["EUR_USD", "GBP_USD"])
@@ -79,6 +86,7 @@ class MockAppConfig:
     correlation: MockCorrelationConfig = field(default_factory=MockCorrelationConfig)
     volatility: MockVolatilityConfig = field(default_factory=MockVolatilityConfig)
     probability: MockProbabilityConfig = field(default_factory=MockProbabilityConfig)
+    crypto: MockCryptoConfig = field(default_factory=MockCryptoConfig)
 
 
 class TestProbabilisticAnalyzerWiring:
@@ -104,7 +112,7 @@ class TestProbabilisticAnalyzerWiring:
         ) as mock_cache_class, patch(
             "forex_signal_agent.main.TelegramNotifier"
         ) as mock_notifier_class, patch(
-            "forex_signal_agent.main.YahooFinanceClient"
+            "forex_signal_agent.main.YahooFinanceProvider"
         ) as mock_client_class:
             # Setup mocks
             mock_cache = MagicMock()
@@ -126,16 +134,15 @@ class TestProbabilisticAnalyzerWiring:
             assert isinstance(app.probabilistic_analyzer, ProbabilisticAnalyzer)
 
     @pytest.mark.asyncio
-    async def test_application_skips_probabilistic_analyzer_when_disabled(self):
+    async def test_probabilistic_analyzer_always_initialized(self):
         """
-        Test that Application does not initialize ProbabilisticAnalyzer when flag is disabled.
+        Test that ProbabilisticAnalyzer is always initialized regardless of migration flag.
 
-        When migration.use_probability_analyzer=False, after app.initialize(),
-        app.probabilistic_analyzer should remain None.
+        After migration completion, probabilistic analyzer is mandatory and always initialized.
         """
-        # Create config with probabilistic mode disabled
+        # Create config (migration flag is now ignored)
         config = MockAppConfig()
-        config.migration.use_probability_analyzer = False
+        config.migration.use_probability_analyzer = False  # This flag is now ignored
 
         with patch(
             "forex_signal_agent.main.load_config",
@@ -145,7 +152,7 @@ class TestProbabilisticAnalyzerWiring:
         ) as mock_cache_class, patch(
             "forex_signal_agent.main.TelegramNotifier"
         ) as mock_notifier_class, patch(
-            "forex_signal_agent.main.YahooFinanceClient"
+            "forex_signal_agent.main.YahooFinanceProvider"
         ) as mock_client_class:
             # Setup mocks
             mock_cache = MagicMock()
@@ -162,8 +169,9 @@ class TestProbabilisticAnalyzerWiring:
             app = Application("test_config.yaml")
             await app.initialize()
 
-            # Assert probabilistic analyzer is not initialized
-            assert app.probabilistic_analyzer is None
+            # Assert probabilistic analyzer is always initialized
+            assert app.probabilistic_analyzer is not None
+            assert isinstance(app.probabilistic_analyzer, ProbabilisticAnalyzer)
 
     @pytest.mark.asyncio
     async def test_probabilistic_analyzer_uses_config_weights(self):
@@ -185,7 +193,7 @@ class TestProbabilisticAnalyzerWiring:
         ) as mock_cache_class, patch(
             "forex_signal_agent.main.TelegramNotifier"
         ) as mock_notifier_class, patch(
-            "forex_signal_agent.main.YahooFinanceClient"
+            "forex_signal_agent.main.YahooFinanceProvider"
         ) as mock_client_class:
             # Setup mocks
             mock_cache = MagicMock()

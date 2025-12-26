@@ -5,8 +5,13 @@ import pandas as pd
 
 def classical_pivots(prev_period: pd.DataFrame) -> dict:
     """
-    prev_period: single-row DataFrame or Series with columns h,l,c (previous day candle)
-    Returns dict with P, R1, R2, R3, S1, S2, S3
+    Calculate classical pivot points from previous period OHLC data.
+
+    Args:
+        prev_period: single-row DataFrame or Series with columns high, low, close
+
+    Returns:
+        dict with P, R1, R2, R3, S1, S2, S3
     """
     if isinstance(prev_period, pd.DataFrame):
         if prev_period.empty:
@@ -14,7 +19,7 @@ def classical_pivots(prev_period: pd.DataFrame) -> dict:
         row = prev_period.iloc[-1]
     else:
         row = prev_period
-    h, l, c = float(row["h"]), float(row["l"]), float(row["c"])
+    h, l, c = float(row["high"]), float(row["low"]), float(row["close"])
     P = (h + l + c) / 3
     R1 = 2 * P - l
     S1 = 2 * P - h

@@ -1,12 +1,12 @@
 # Конфигурация Forex Signal Agent
 timezone: Europe/Moscow
 pairs:
-  - EUR_USD:X
-  - GBP_USD:X
-  - EUR_GBP:X
-  - GBP_CHF:X
-  - USD_CAD:X
-  - G_C:F
+  - EURUSD=X
+  - GBPUSD=X
+  - EURGBP=X
+  - GBPCHF=X
+  - USDCAD=X
+  - GC=F
 # Список заданий по таймфреймам
 # resolution: 1,5,15,30,60,1h,4h,D
 # poll_interval_seconds — как часто опрашивать API (подбирайте под таймфрейм и лимиты API)
@@ -32,11 +32,11 @@ backtest:
 # Путь к SQLite базе для кеша
 sqlite_path: ./data/cache.db
 
-# Probabilistic analyzer migration settings
+# Migration settings (legacy - probabilistic analyzer is now always enabled)
 migration:
-  use_probability_analyzer: true
-  log_both_analyzers: true
-  publish_to_test_channel: true
+  use_probability_analyzer: true # Ignored - always true
+  log_both_analyzers: false
+  publish_to_test_channel: false
 
 # Correlation analysis settings
 correlation:
@@ -63,9 +63,9 @@ probability:
     volume: 0.25
     correlation: 0.25
 
-# Cryptocurrency settings
+# Cryptocurrency settings (for cross-market correlation analysis)
 crypto:
-  enabled: false
+  enabled: true
   pairs:
     - BTCUSDT
     - ETHUSDT

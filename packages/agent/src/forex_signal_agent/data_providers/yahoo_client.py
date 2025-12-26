@@ -53,13 +53,23 @@ class YahooFinanceProvider(BaseDataProvider):
         df = await provider.get_candles("EURUSD=X", "1h", bars=100)
     """
 
-    def __init__(self, rate_limit_per_second: float = 2.0):
+    def __init__(
+        self,
+        rate_limit_per_second: float = 0.5,
+        max_retries: int = 3,
+        retry_delay: float = 2.0,
+    ):
         """Initialize Yahoo Finance provider.
 
         Args:
-            rate_limit_per_second: Rate limit for API calls
+            rate_limit_per_second: Rate limit for API calls (default 0.5 = 1 request per 2 seconds)
+                                   Yahoo Finance is strict about rate limiting
+            max_retries: Maximum number of retry attempts on empty response
+            retry_delay: Delay between retries in seconds
         """
         super().__init__(rate_limit_per_second)
+        self._max_retries = max_retries
+        self._retry_delay = retry_delay
 
     @property
     def name(self) -> str:
@@ -81,8 +91,6 @@ class YahooFinanceProvider(BaseDataProvider):
         Returns:
             DataFrame with datetime index and columns: open, high, low, close, volume
         """
-        await self._rate_limit_wait()
-
         tf_str = normalize_timeframe(timeframe)
         yf_interval = TIMEFRAME_MAP.get(tf_str)
         needs_resample = tf_str == "4h"
@@ -130,25 +138,43 @@ class YahooFinanceProvider(BaseDataProvider):
                 logger.error(f"Error downloading {symbol}: {e}")
                 return self._empty_dataframe()
 
-        try:
-            df = await asyncio.to_thread(_download)
+        # Retry logic for Yahoo Finance rate limiting
+        last_error = None
+        for attempt in range(self._max_retries):
+            try:
+                await self._rate_limit_wait()
+                df = await asyncio.to_thread(_download)
 
-            if df.empty:
+                if df.empty:
+                    if attempt < self._max_retries - 1:
+                        logger.debug(
+                            f"Empty response for {symbol}, retry {attempt + 1}/{self._max_retries}"
+                        )
+                        await asyncio.sleep(self._retry_delay * (attempt + 1))
+                        continue
+                    return df
+
+                # Resample to 4h if needed
+                if needs_resample:
+                    df = self._resample_to_4h(df)
+
+                # Limit to requested number of bars
+                if len(df) > bars:
+                    df = df.iloc[-bars:]
+
                 return df
 
-            # Resample to 4h if needed
-            if needs_resample:
-                df = self._resample_to_4h(df)
+            except Exception as e:
+                last_error = e
+                if attempt < self._max_retries - 1:
+                    logger.warning(
+                        f"Error fetching {symbol}, retry {attempt + 1}/{self._max_retries}: {e}"
+                    )
+                    await asyncio.sleep(self._retry_delay * (attempt + 1))
+                    continue
 
-            # Limit to requested number of bars
-            if len(df) > bars:
-                df = df.iloc[-bars:]
-
-            return df
-
-        except Exception as e:
-            logger.error(f"Failed to fetch candles for {symbol}: {e}")
-            return self._empty_dataframe()
+        logger.error(f"Failed to fetch candles for {symbol} after {self._max_retries} attempts: {last_error}")
+        return self._empty_dataframe()
 
     async def get_latest_price(self, symbol: str) -> float | None:
         """Get the latest price for a symbol.
