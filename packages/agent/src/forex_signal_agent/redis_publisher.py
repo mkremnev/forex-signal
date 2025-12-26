@@ -21,6 +21,8 @@ from .message_types import (
     SignalPayload,
     MetricsMessage,
     MetricsPayload,
+    ProbabilitySignalMessage,
+    ProbabilitySignalPayload,
     OutgoingMessage,
 )
 from .redis_client import RedisConnectionManager
@@ -146,6 +148,28 @@ class RedisPublisher:
         message = MetricsMessage(payload=payload)
         await self._queue.put(message)
 
+    async def publish_probability_signal(self, payload: ProbabilitySignalPayload) -> None:
+        """
+        Publish probability-based trading signal.
+
+        Also stores in Redis list for signal history.
+
+        Args:
+            payload: Probability signal payload
+        """
+        message = ProbabilitySignalMessage(payload=payload)
+        await self._queue.put(message)
+
+        # Also store in Redis list for history
+        try:
+            await self._redis.lpush_with_trim(
+                RedisChannels.SIGNALS_LIST,
+                message.model_dump_json(),
+                self.MAX_SIGNALS_HISTORY
+            )
+        except Exception as e:
+            logger.warning(f"Failed to store probability signal in Redis list: {e}")
+
     async def _publisher_loop(self) -> None:
         """Background loop for publishing messages from queue."""
         while self._running:
@@ -214,6 +238,8 @@ class RedisPublisher:
         if isinstance(message, StatusMessage):
             return RedisChannels.STATUS
         elif isinstance(message, SignalMessage):
+            return RedisChannels.SIGNALS
+        elif isinstance(message, ProbabilitySignalMessage):
             return RedisChannels.SIGNALS
         elif isinstance(message, MetricsMessage):
             return RedisChannels.METRICS
@@ -345,4 +371,48 @@ def create_metrics_payload(
         errors_in_cycle=errors_in_cycle,
         active_pairs=active_pairs or [],
         active_timeframes=active_timeframes or []
+    )
+
+
+def create_probability_signal_payload(
+    symbol: str,
+    timeframe: str,
+    direction: str,
+    probabilities: dict[str, float],
+    confidence: float,
+    is_actionable: bool,
+    importance: int = 1,
+    factors: Optional[dict[str, float]] = None,
+    volatility_regime: Optional[str] = None,
+    atr_percent: Optional[float] = None
+) -> ProbabilitySignalPayload:
+    """
+    Create probability signal payload from analysis results.
+
+    Args:
+        symbol: Trading pair symbol
+        timeframe: Timeframe (e.g., "1d", "4h")
+        direction: Predicted direction ("upward", "downward", "consolidation")
+        probabilities: Dict of probabilities for each direction
+        confidence: Overall confidence score (0-1)
+        is_actionable: Whether the signal is actionable
+        importance: Signal importance (1=normal, 2=high confidence)
+        factors: Dict of factor contributions (optional)
+        volatility_regime: Current volatility regime (optional)
+        atr_percent: ATR as percentage of price (optional)
+
+    Returns:
+        ProbabilitySignalPayload instance
+    """
+    return ProbabilitySignalPayload(
+        symbol=symbol,
+        timeframe=timeframe,
+        direction=direction,
+        probabilities=probabilities,
+        confidence=confidence,
+        is_actionable=is_actionable,
+        importance=importance,
+        factors=factors or {},
+        volatility_regime=volatility_regime,
+        atr_percent=atr_percent
     )

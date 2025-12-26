@@ -1,22 +1,29 @@
 from __future__ import annotations
-import logging
+
 import argparse
 import asyncio
+import logging
 import signal
 import sys
-from datetime import datetime, timezone
-from typing import List, Optional, TYPE_CHECKING
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
+from typing import TYPE_CHECKING, List, Optional
 
 import pandas as pd
 
-from .config import load_config, AppConfig
-from .yahoo_finance_client import YahooFinanceClient, YAHOO_TIMEFRAME_MAP
-from .telegram_notifier import TelegramNotifier
-from .sqlite_cache import Cache
-from .analyzer import analyze_pair, Event
-from .exceptions import DataProviderException, AnalysisException, NotificationException
+from .analysis import (
+    EventType,
+    ProbabilisticAnalyzer,
+    ProbabilityWeights,
+)
+from .analyzer import Event, analyze_pair
+from .config import AppConfig, load_config
+from .exceptions import AnalysisException, DataProviderException, NotificationException
 from .logging_config import setup_logging
+from .message_formatter import format_probability_signal, format_volatility_alert
+from .sqlite_cache import Cache
+from .telegram_notifier import TelegramNotifier
+from .yahoo_finance_client import YAHOO_TIMEFRAME_MAP, YahooFinanceClient
 
 if TYPE_CHECKING:
     from .integration_manager import IntegrationManager
@@ -66,7 +73,9 @@ def _is_forex_market_open(now: datetime) -> bool:
         return True
 
 
-async def fetch_candles(client: YahooFinanceClient, symbol: str, timeframe: str, bars: int = 400) -> pd.DataFrame:
+async def fetch_candles(
+    client: YahooFinanceClient, symbol: str, timeframe: str, bars: int = 400
+) -> pd.DataFrame:
     now = int(datetime.now(tz=timezone.utc).timestamp())
     sec = _timeframe_to_seconds(timeframe)
     start = now - sec * (bars + 5)
@@ -81,29 +90,46 @@ async def fetch_candles(client: YahooFinanceClient, symbol: str, timeframe: str,
 def daily_from_intraday(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df
-    daily = pd.DataFrame({
-        "o": df["o"].resample("1D").first(),
-        "h": df["h"].resample("1D").max(),
-        "l": df["l"].resample("1D").min(),
-        "c": df["c"].resample("1D").last(),
-        "v": df["v"].resample("1D").sum(),
-    }).dropna()
+    daily = pd.DataFrame(
+        {
+            "o": df["o"].resample("1D").first(),
+            "h": df["h"].resample("1D").max(),
+            "l": df["l"].resample("1D").min(),
+            "c": df["c"].resample("1D").last(),
+            "v": df["v"].resample("1D").sum(),
+        }
+    ).dropna()
     return daily
 
 
-async def process_pair(cfg: AppConfig, cache: Cache, notifier: TelegramNotifier, client: YahooFinanceClient, symbol: str, timeframe: str, integration: Optional['IntegrationManager'] = None):
+async def process_pair(
+    cfg: AppConfig,
+    cache: Cache,
+    notifier: TelegramNotifier,
+    client: YahooFinanceClient,
+    symbol: str,
+    timeframe: str,
+    integration: Optional["IntegrationManager"] = None,
+):
     """Process a single pair with comprehensive error handling"""
     try:
         logger.info(f"🔄 Обработка пары {symbol} {timeframe}")
-        
+
         candles = await fetch_candles(client, symbol, timeframe, bars=600)
         if candles.empty:
             logger.warning(f"No data returned for {symbol} on {timeframe}")
             return
-            
+
         daily = daily_from_intraday(candles)
-        events = analyze_pair(candles, daily, symbol, cfg.adx_threshold, cfg.rsi_overbought, cfg.rsi_oversold)
-        
+        events = analyze_pair(
+            candles,
+            daily,
+            symbol,
+            cfg.adx_threshold,
+            cfg.rsi_overbought,
+            cfg.rsi_oversold,
+        )
+
         # Дополнительно: тиковое движение относительно последнего закрытия свечи
         last_close = float(candles.iloc[-1]["c"]) if not candles.empty else None
         tick = await client.get_latest_quote(symbol)
@@ -113,7 +139,7 @@ async def process_pair(cfg: AppConfig, cache: Cache, notifier: TelegramNotifier,
                 diff = abs(px - last_close) / last_close
                 if diff >= 0.001:  # >=0.1% резкое движение
                     direction = "вверх" if px > last_close else "вниз"
-                    msg = f"⚡ {symbol}: резкое тиковое движение {direction} на {diff*100:.2f}% относительно закрытия последней свечи."
+                    msg = f"⚡ {symbol}: резкое тиковое движение {direction} на {diff * 100:.2f}% относительно закрытия последней свечи."
                     events.append(Event(kind="tick_spike", message=msg, importance=2))
 
         # проверка времени восстановления
@@ -128,7 +154,7 @@ async def process_pair(cfg: AppConfig, cache: Cache, notifier: TelegramNotifier,
                         timeframe=timeframe,
                         kind=ev.kind,
                         message=ev.message,
-                        importance=ev.importance
+                        importance=ev.importance,
                     )
                 except Exception as e:
                     logger.warning(f"Failed to publish signal to Redis: {e}")
@@ -139,18 +165,28 @@ async def process_pair(cfg: AppConfig, cache: Cache, notifier: TelegramNotifier,
             importance_check = ev.importance >= 2
             should_send = cooldown_met or importance_check
 
-            logger.debug(f"Cooldown check for {symbol} {timeframe} {ev.kind}: last_ts={last_ts}, now_ts={now_ts}, time_diff={time_diff}, cooldown={cooldown_sec}, cooldown_met={cooldown_met}, importance={ev.importance}, importance_check={importance_check}, should_send={should_send}")
+            logger.debug(
+                f"Cooldown check for {symbol} {timeframe} {ev.kind}: last_ts={last_ts}, now_ts={now_ts}, time_diff={time_diff}, cooldown={cooldown_sec}, cooldown_met={cooldown_met}, importance={ev.importance}, importance_check={importance_check}, should_send={should_send}"
+            )
 
             if should_send:
-                logger.info(f"Sending message for {symbol} {timeframe} {ev.kind} (cooldown check passed)")
+                logger.info(
+                    f"Sending message for {symbol} {timeframe} {ev.kind} (cooldown check passed)"
+                )
                 await notifier.send_message(f"{ev.message} (TF: {timeframe})")
                 await cache.set_last_sent(symbol, timeframe, ev.kind, now_ts)
-                logger.debug(f"Message sent and cache updated for {symbol} {timeframe} {ev.kind}")
+                logger.debug(
+                    f"Message sent and cache updated for {symbol} {timeframe} {ev.kind}"
+                )
             else:
-                logger.info(f"Message skipped for {symbol} {timeframe} {ev.kind} (cooldown not met)")
+                logger.info(
+                    f"Message skipped for {symbol} {timeframe} {ev.kind} (cooldown not met)"
+                )
     except DataProviderException as e:
         logger.error(f"Data provider error for {symbol} {timeframe}: {e}")
-        await notifier.send_message(f"⚠️ Ошибка получения данных {symbol} {timeframe}: {e}")
+        await notifier.send_message(
+            f"⚠️ Ошибка получения данных {symbol} {timeframe}: {e}"
+        )
     except AnalysisException as e:
         logger.error(f"Analysis error for {symbol} {timeframe}: {e}")
         await notifier.send_message(f"⚠️ Ошибка анализа {symbol} {timeframe}: {e}")
@@ -159,7 +195,125 @@ async def process_pair(cfg: AppConfig, cache: Cache, notifier: TelegramNotifier,
         # Don't send another notification since the notification system itself failed
     except Exception as e:
         logger.error(f"Unexpected error processing {symbol} {timeframe}: {e}")
-        await notifier.send_message(f"⚠️ Непредвиденная ошибка обработки {symbol} {timeframe}: {e}")
+        await notifier.send_message(
+            f"⚠️ Непредвиденная ошибка обработки {symbol} {timeframe}: {e}"
+        )
+
+
+async def process_pair_probabilistic(
+    cfg: AppConfig,
+    cache: Cache,
+    notifier: TelegramNotifier,
+    client: YahooFinanceClient,
+    analyzer: ProbabilisticAnalyzer,
+    symbol: str,
+    timeframe: str,
+    integration: Optional["IntegrationManager"] = None,
+):
+    """Process a single pair using probabilistic analysis."""
+    try:
+        logger.info(f"🔄 Probabilistic processing for {symbol} {timeframe}")
+
+        # Fetch candles
+        candles = await fetch_candles(client, symbol, timeframe, bars=600)
+        if candles.empty:
+            logger.warning(f"No data returned for {symbol} on {timeframe}")
+            return
+
+        # Rename columns: o/h/l/c/v → open/high/low/close/volume
+        candles = candles.rename(
+            columns={"o": "open", "h": "high", "l": "low", "c": "close", "v": "volume"}
+        )
+
+        # Run probabilistic analysis
+        result = analyzer.analyze(candles, symbol, timeframe)
+
+        # Process events
+        cooldown_sec = cfg.telegram.message_cooldown_minutes * 60
+        now_ts = int(datetime.now(tz=timezone.utc).timestamp())
+
+        for event in result.events:
+            # Determine kind and format message based on event type
+            if event.event_type == EventType.PROBABILITY_SIGNAL:
+                direction = event.data.get("direction", "consolidation")
+                kind = f"prob_{direction}"
+                message = format_probability_signal(event)
+
+                # Publish to Redis for probability signals
+                if integration is not None:
+                    try:
+                        volatility_regime = None
+                        atr_percent = None
+                        if result.volatility:
+                            volatility_regime = result.volatility.regime.value
+                            atr_percent = result.volatility.atr_percent
+
+                        await integration.publish_probability_signal(
+                            symbol=symbol,
+                            timeframe=timeframe,
+                            direction=direction,
+                            probabilities=event.data.get("probabilities", {}),
+                            confidence=event.data.get("confidence", 0.0),
+                            is_actionable=event.data.get("is_actionable", False),
+                            importance=event.importance,
+                            factors=event.data.get("factors", {}),
+                            volatility_regime=volatility_regime,
+                            atr_percent=atr_percent,
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            f"Failed to publish probability signal to Redis: {e}"
+                        )
+
+            elif event.event_type == EventType.VOLATILITY_ALERT:
+                regime = event.data.get("regime", "normal")
+                kind = f"vol_{regime}"
+                message = format_volatility_alert(event)
+            else:
+                # Unknown event type, skip
+                continue
+
+            # Telegram cooldown logic
+            last_ts = await cache.get_last_sent(symbol, timeframe, kind)
+            time_diff = now_ts - (last_ts or 0)
+            cooldown_met = last_ts is None or time_diff >= cooldown_sec
+            importance_check = event.importance >= 2
+            should_send = cooldown_met or importance_check
+
+            logger.debug(
+                f"Cooldown check for {symbol} {timeframe} {kind}: "
+                f"cooldown_met={cooldown_met}, importance={event.importance}, "
+                f"should_send={should_send}"
+            )
+
+            if should_send:
+                logger.info(
+                    f"Sending probabilistic message for {symbol} {timeframe} {kind}"
+                )
+                await notifier.send_message(message)
+                await cache.set_last_sent(symbol, timeframe, kind, now_ts)
+            else:
+                logger.info(
+                    f"Message skipped for {symbol} {timeframe} {kind} (cooldown)"
+                )
+
+    except DataProviderException as e:
+        logger.error(f"Data provider error for {symbol} {timeframe}: {e}")
+        await notifier.send_message(
+            f"⚠️ Ошибка получения данных {symbol} {timeframe}: {e}"
+        )
+    except AnalysisException as e:
+        logger.error(f"Analysis error for {symbol} {timeframe}: {e}")
+        await notifier.send_message(f"⚠️ Ошибка анализа {symbol} {timeframe}: {e}")
+    except NotificationException as e:
+        logger.error(f"Notification error for {symbol} {timeframe}: {e}")
+    except Exception as e:
+        logger.error(
+            f"Unexpected error in probabilistic processing {symbol} {timeframe}: {e}"
+        )
+        await notifier.send_message(
+            f"⚠️ Непредвиденная ошибка обработки {symbol} {timeframe}: {e}"
+        )
 
 
 async def hourly_summary(cfg: AppConfig, notifier: TelegramNotifier, cache: Cache):
@@ -183,8 +337,9 @@ class Application:
         self.running = False
         self.paused = False  # For pause/resume commands from Dashboard
         self.integration: Optional[IntegrationManager] = None
+        self.probabilistic_analyzer: Optional[ProbabilisticAnalyzer] = None
         self.logger = logging.getLogger(__name__)
-        
+
     async def initialize(self):
         """Initialize all components"""
         try:
@@ -195,60 +350,103 @@ class Application:
             await self.cache.init()
 
             self.notifier = TelegramNotifier(
-                self.config.telegram.bot_token,
-                self.config.telegram.chat_id
+                self.config.telegram.bot_token, self.config.telegram.chat_id
             )
             self.client = YahooFinanceClient()
 
             # Initialize Redis integration if enabled
             if self.config.redis.enabled:
                 from .integration_manager import IntegrationManager
+
                 self.integration = IntegrationManager(self, self.config.redis)
                 await self.integration.start()
-                self.logger.info("Redis integration initialized", extra={'event_type': 'redis_init'})
+                self.logger.info(
+                    "Redis integration initialized", extra={"event_type": "redis_init"}
+                )
 
-            self.logger.info("Application initialized successfully", extra={'event_type': 'app_init'})
+            # Initialize probabilistic analyzer if enabled
+            if self.config.migration.use_probability_analyzer:
+                forex_weights = self.config.probability.forex_weights
+                weights = ProbabilityWeights(
+                    roc=forex_weights.get("roc", 0.33),
+                    volatility=forex_weights.get("volatility", 0.33),
+                    volume=0.0,  # Volume not used for Forex
+                    correlation=forex_weights.get("correlation", 0.33),
+                )
+                self.probabilistic_analyzer = ProbabilisticAnalyzer(
+                    correlation_lookback_hours=self.config.correlation.lookback_hours,
+                    correlation_min_points=self.config.correlation.min_data_points,
+                    high_correlation_threshold=self.config.correlation.high_correlation_threshold,
+                    atr_period=self.config.volatility.atr_period,
+                    consolidation_threshold=self.config.volatility.consolidation_threshold,
+                    probability_weights=weights,
+                )
+                self.logger.info(
+                    "Probabilistic analyzer initialized",
+                    extra={"event_type": "probabilistic_analyzer_init"},
+                )
+
+            self.logger.info(
+                "Application initialized successfully", extra={"event_type": "app_init"}
+            )
         except Exception as e:
-            self.logger.error(f"Failed to initialize application: {e}", extra={'event_type': 'init_error'})
+            self.logger.error(
+                f"Failed to initialize application: {e}",
+                extra={"event_type": "init_error"},
+            )
             raise
-            
+
     async def cleanup(self):
         """Clean up resources"""
         try:
             # Stop Redis integration first
             if self.integration:
                 await self.integration.stop()
-                self.logger.info("Redis integration stopped", extra={'event_type': 'redis_cleanup'})
+                self.logger.info(
+                    "Redis integration stopped", extra={"event_type": "redis_cleanup"}
+                )
 
             if self.client:
                 await self.client.close()
             if self.notifier:
                 await self.notifier.close()
-            self.logger.info("Application cleaned up successfully", extra={'event_type': 'app_cleanup'})
+            self.logger.info(
+                "Application cleaned up successfully",
+                extra={"event_type": "app_cleanup"},
+            )
         except Exception as e:
-            self.logger.error(f"Error during cleanup: {e}", extra={'event_type': 'cleanup_error'})
+            self.logger.error(
+                f"Error during cleanup: {e}", extra={"event_type": "cleanup_error"}
+            )
 
     def pause(self) -> None:
         """Pause agent processing (called from Redis command)."""
         self.paused = True
-        self.logger.info("Agent paused via command", extra={'event_type': 'agent_paused'})
+        self.logger.info(
+            "Agent paused via command", extra={"event_type": "agent_paused"}
+        )
 
     def resume(self) -> None:
         """Resume agent processing (called from Redis command)."""
         self.paused = False
-        self.logger.info("Agent resumed via command", extra={'event_type': 'agent_resumed'})
-            
+        self.logger.info(
+            "Agent resumed via command", extra={"event_type": "agent_resumed"}
+        )
+
     def signal_handler(self, signum, frame):
         """Handle shutdown signals gracefully"""
-        self.logger.info(f"Received signal {signum}, shutting down gracefully", extra={'event_type': 'shutdown_signal', 'signal': signum})
+        self.logger.info(
+            f"Received signal {signum}, shutting down gracefully",
+            extra={"event_type": "shutdown_signal", "signal": signum},
+        )
         self.running = False
-    
+
     async def run(self):
         """Main application loop"""
         self.running = True
         signal.signal(signal.SIGINT, self.signal_handler)
         signal.signal(signal.SIGTERM, self.signal_handler)
-        
+
         try:
             while self.running:
                 start_time = datetime.now()
@@ -257,19 +455,28 @@ class Application:
                     cycle_duration = (datetime.now() - start_time).total_seconds()
                     self.logger.info(
                         f"Cycle completed in {cycle_duration:.2f}s",
-                        extra={'event_type': 'cycle_complete', 'duration': cycle_duration}
+                        extra={
+                            "event_type": "cycle_complete",
+                            "duration": cycle_duration,
+                        },
                     )
                 except Exception as e:
-                    self.logger.error(f"Error in main cycle: {e}", extra={'event_type': 'cycle_error'})
-                    
+                    self.logger.error(
+                        f"Error in main cycle: {e}", extra={"event_type": "cycle_error"}
+                    )
+
                 # Sleep until next poll considering execution time
-                interval = min([t.poll_interval_seconds for t in self.config.timeframes]) if self.config.timeframes else 60
+                interval = (
+                    min([t.poll_interval_seconds for t in self.config.timeframes])
+                    if self.config.timeframes
+                    else 60
+                )
                 elapsed = (datetime.now() - start_time).total_seconds()
                 sleep_for = max(1, interval - int(elapsed))
                 await asyncio.sleep(sleep_for)
         finally:
             await self.cleanup()
-    
+
     async def _run_cycle(self):
         """Execute a single processing cycle"""
         start_loop = datetime.now(tz=timezone.utc)
@@ -285,9 +492,47 @@ class Application:
             hour = start_loop.hour
             self.logger.info(
                 f"Skipping cycle - forex market closed (day {weekday}, hour {hour} GMT)",
-                extra={'event_type': 'cycle_skipped', 'weekday': weekday, 'hour_gmt': hour}
+                extra={
+                    "event_type": "cycle_skipped",
+                    "weekday": weekday,
+                    "hour_gmt": hour,
+                },
             )
             return
+
+        # Check if probabilistic mode is enabled
+        use_probabilistic = (
+            self.config.migration.use_probability_analyzer
+            and self.probabilistic_analyzer is not None
+        )
+
+        # Update correlations for probabilistic mode (24h cycle refresh)
+        if use_probabilistic:
+            try:
+                all_data: dict[str, pd.DataFrame] = {}
+                for sym in self.config.pairs:
+                    candles = await fetch_candles(self.client, sym, "1h", bars=48)
+                    if not candles.empty:
+                        # Rename columns for probabilistic analyzer
+                        candles = candles.rename(
+                            columns={
+                                "o": "open",
+                                "h": "high",
+                                "l": "low",
+                                "c": "close",
+                                "v": "volume",
+                            }
+                        )
+                        all_data[sym] = candles
+
+                if all_data:
+                    self.probabilistic_analyzer.update_correlations(all_data)
+                    self.logger.debug(
+                        f"Updated correlations for {len(all_data)} symbols",
+                        extra={"event_type": "correlations_updated"},
+                    )
+            except Exception as e:
+                self.logger.warning(f"Failed to update correlations: {e}")
 
         tasks: List[asyncio.Task] = []
         errors_count = 0
@@ -295,9 +540,44 @@ class Application:
         for tf_job in self.config.timeframes:
             tf = tf_job.timeframe
             for sym in self.config.pairs:
-                tasks.append(asyncio.create_task(process_pair(self.config, self.cache, self.notifier, self.client, sym, tf, self.integration)))
+                if use_probabilistic:
+                    # Use probabilistic analyzer
+                    tasks.append(
+                        asyncio.create_task(
+                            process_pair_probabilistic(
+                                self.config,
+                                self.cache,
+                                self.notifier,
+                                self.client,
+                                self.probabilistic_analyzer,
+                                sym,
+                                tf,
+                                self.integration,
+                            )
+                        )
+                    )
+                else:
+                    # Use legacy analyzer
+                    tasks.append(
+                        asyncio.create_task(
+                            process_pair(
+                                self.config,
+                                self.cache,
+                                self.notifier,
+                                self.client,
+                                sym,
+                                tf,
+                                self.integration,
+                            )
+                        )
+                    )
+
         if self.config.notify_hourly_summary and start_loop.minute == 0:
-            tasks.append(asyncio.create_task(hourly_summary(self.config, self.notifier, self.cache)))
+            tasks.append(
+                asyncio.create_task(
+                    hourly_summary(self.config, self.notifier, self.cache)
+                )
+            )
 
         if tasks:
             results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -318,7 +598,7 @@ class Application:
                 cycle_duration_ms=cycle_duration_ms,
                 errors_in_cycle=errors_count,
                 active_pairs=self.config.pairs,
-                active_timeframes=[tf.timeframe for tf in self.config.timeframes]
+                active_timeframes=[tf.timeframe for tf in self.config.timeframes],
             )
 
 
@@ -333,47 +613,77 @@ async def run_backtest(args):
     """Run backtesting with improved error handling"""
     cfg = load_config(args.config)
     client = YahooFinanceClient()
-    
+
     try:
         # Log the start of backtesting
-        logger.info("Starting backtesting", extra={'event_type': 'backtest_start'})
-        
+        logger.info("Starting backtesting", extra={"event_type": "backtest_start"})
+
         # Run the backtesting cycle across timeframes
         for tf_job in cfg.timeframes:
             tf = tf_job.timeframe
             # Fetch data for each symbol
             for sym in cfg.pairs:
                 # Get candles for the specific timeframe and symbol with the specified number of bars
-                df = await fetch_candles(client, sym, tf, bars=cfg.backtest.lookback_bars)
+                df = await fetch_candles(
+                    client, sym, tf, bars=cfg.backtest.lookback_bars
+                )
                 if df.empty:
-                    logger.warning(f"No data for {sym} {tf}", extra={'event_type': 'no_data', 'symbol': sym, 'timeframe': tf})
+                    logger.warning(
+                        f"No data for {sym} {tf}",
+                        extra={"event_type": "no_data", "symbol": sym, "timeframe": tf},
+                    )
                     continue
-                
+
                 # Prepare data for analysis (daily candles)
                 daily = daily_from_intraday(df)
                 # Analyze the candles
-                events = analyze_pair(df, daily, sym, cfg.adx_threshold, cfg.rsi_overbought, cfg.rsi_oversold)
-                
-                logger.info(f"Backtest {sym} {tf}: {len(events)} events detected", 
-                           extra={'event_type': 'backtest_results', 'symbol': sym, 'timeframe': tf, 'event_count': len(events)})
-                
+                events = analyze_pair(
+                    df,
+                    daily,
+                    sym,
+                    cfg.adx_threshold,
+                    cfg.rsi_overbought,
+                    cfg.rsi_oversold,
+                )
+
+                logger.info(
+                    f"Backtest {sym} {tf}: {len(events)} events detected",
+                    extra={
+                        "event_type": "backtest_results",
+                        "symbol": sym,
+                        "timeframe": tf,
+                        "event_count": len(events),
+                    },
+                )
+
                 for ev in events:
-                    logger.info(f" - {ev.message}", extra={'event_type': 'backtest_event', 'symbol': sym, 'timeframe': tf})
+                    logger.info(
+                        f" - {ev.message}",
+                        extra={
+                            "event_type": "backtest_event",
+                            "symbol": sym,
+                            "timeframe": tf,
+                        },
+                    )
     except Exception as e:
-        logger.error(f"Error during backtesting: {e}", extra={'event_type': 'backtest_error'})
+        logger.error(
+            f"Error during backtesting: {e}", extra={"event_type": "backtest_error"}
+        )
         raise
     finally:
         await client.close()
-        logger.info("Backtesting completed", extra={'event_type': 'backtest_complete'})
+        logger.info("Backtesting completed", extra={"event_type": "backtest_complete"})
 
 
 def main():
     """Main entry point with proper error handling"""
     logging.info("Starting Forex Signal Agent...")
-    
+
     parser = argparse.ArgumentParser(description="Forex Signal Agent")
     parser.add_argument("--config", default="config.yaml", help="Путь к YAML конфигу")
-    parser.add_argument("--backtest", action="store_true", help="Запустить бэктест и выйти")
+    parser.add_argument(
+        "--backtest", action="store_true", help="Запустить бэктест и выйти"
+    )
     args = parser.parse_args()
 
     if args.backtest:
@@ -381,21 +691,22 @@ def main():
         try:
             asyncio.run(run_backtest(args))
         except Exception as e:
-            logger.error(f"Backtest error: {e}", extra={'event_type': 'backtest_error'})
+            logger.error(f"Backtest error: {e}", extra={"event_type": "backtest_error"})
             sys.exit(1)
     else:
         logging.info("Starting Forex Signal Agent in normal mode...")
         try:
             asyncio.run(run_agent(args))
         except Exception as e:
-            logger.error(f"Agent error: {e}", extra={'event_type': 'agent_error'})
+            logger.error(f"Agent error: {e}", extra={"event_type": "agent_error"})
             sys.exit(1)
+
 
 if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        logger.info("Agent stopped by user", extra={'event_type': 'agent_shutdown'})
+        logger.info("Agent stopped by user", extra={"event_type": "agent_shutdown"})
     except Exception as e:
-        logger.error(f"Unexpected error: {e}", extra={'event_type': 'unexpected_error'})
+        logger.error(f"Unexpected error: {e}", extra={"event_type": "unexpected_error"})
         sys.exit(1)

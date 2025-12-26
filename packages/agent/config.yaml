@@ -31,3 +31,54 @@ backtest:
   lookback_bars: 1500
 # Путь к SQLite базе для кеша
 sqlite_path: ./data/cache.db
+
+# Probabilistic analyzer migration settings
+migration:
+  use_probability_analyzer: true
+  log_both_analyzers: true
+  publish_to_test_channel: true
+
+# Correlation analysis settings
+correlation:
+  lookback_hours: 24
+  min_data_points: 20
+  high_correlation_threshold: 0.7
+
+# Volatility analysis settings
+volatility:
+  atr_period: 14
+  consolidation_threshold: 0.01
+
+# Probability model settings
+probability:
+  confidence_threshold: 0.4
+  high_confidence_threshold: 0.6
+  forex_weights:
+    roc: 0.33
+    volatility: 0.33
+    correlation: 0.33
+  crypto_weights:
+    roc: 0.25
+    volatility: 0.25
+    volume: 0.25
+    correlation: 0.25
+
+# Cryptocurrency settings
+crypto:
+  enabled: false
+  pairs:
+    - BTCUSDT
+    - ETHUSDT
+    - SOLUSDT
+  sandbox: false
+
+# Probabilistic backtest settings
+backtest_v2:
+  enabled: false
+  initial_capital: 10000.0
+  position_size_pct: 0.02
+  stop_loss_pct: 0.02
+  take_profit_pct: 0.04
+  max_open_trades: 3
+  slippage_pct: 0.001
+  commission_pct: 0.001

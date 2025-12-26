@@ -148,6 +148,48 @@ class SignalMessage(BaseMessage):
 
 
 # =============================================================================
+# Agent -> Dashboard: Probability Signals
+# =============================================================================
+
+class ProbabilitySignalPayload(BaseModel):
+    """Payload for probability-based trading signals."""
+    symbol: str
+    timeframe: str
+    direction: str  # "upward", "downward", "consolidation"
+    probabilities: Dict[str, float]  # {"upward": 0.6, "downward": 0.3, "consolidation": 0.1}
+    confidence: float
+    is_actionable: bool
+    importance: int = 1  # 1 = normal, 2 = high confidence
+    factors: Dict[str, float] = Field(default_factory=dict)
+    volatility_regime: Optional[str] = None
+    atr_percent: Optional[float] = None
+
+
+class ProbabilitySignalMessage(BaseMessage):
+    """Probability signal message from Agent to Dashboard."""
+    type: Literal["probability_signal"] = "probability_signal"
+    payload: ProbabilitySignalPayload
+
+
+# =============================================================================
+# Agent -> Dashboard: Correlation Matrix
+# =============================================================================
+
+class CorrelationMatrixPayload(BaseModel):
+    """Payload for correlation matrix updates."""
+    symbols: List[str]
+    matrix: Dict[str, Dict[str, float]]  # symbol -> {symbol: correlation}
+    high_correlations: List[Dict[str, Any]] = Field(default_factory=list)
+    timestamp: datetime = Field(default_factory=_utc_now)
+
+
+class CorrelationMatrixMessage(BaseMessage):
+    """Correlation matrix message from Agent to Dashboard."""
+    type: Literal["correlation_matrix"] = "correlation_matrix"
+    payload: CorrelationMatrixPayload
+
+
+# =============================================================================
 # Agent -> Dashboard: Metrics
 # =============================================================================
 
@@ -177,7 +219,13 @@ class MetricsMessage(BaseMessage):
 IncomingMessage = Union[CommandMessage, ConfigUpdateMessage]
 
 # Union type for all outgoing messages (Agent -> Dashboard)
-OutgoingMessage = Union[StatusMessage, SignalMessage, MetricsMessage]
+OutgoingMessage = Union[
+    StatusMessage,
+    SignalMessage,
+    MetricsMessage,
+    ProbabilitySignalMessage,
+    CorrelationMatrixMessage,
+]
 
 
 def parse_incoming_message(data: Dict[str, Any]) -> Optional[IncomingMessage]:

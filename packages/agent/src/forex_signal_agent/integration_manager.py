@@ -23,6 +23,7 @@ from .redis_publisher import (
     create_status_payload,
     create_signal_payload,
     create_metrics_payload,
+    create_probability_signal_payload,
 )
 from .redis_subscriber import RedisSubscriber
 from .message_types import CommandMessage, ConfigUpdateMessage
@@ -421,6 +422,54 @@ class IntegrationManager:
         )
 
         await self._publisher.publish_metrics(payload)
+
+    async def publish_probability_signal(
+        self,
+        symbol: str,
+        timeframe: str,
+        direction: str,
+        probabilities: Dict[str, float],
+        confidence: float,
+        is_actionable: bool,
+        importance: int = 1,
+        factors: Optional[Dict[str, float]] = None,
+        volatility_regime: Optional[str] = None,
+        atr_percent: Optional[float] = None
+    ) -> None:
+        """
+        Publish probability-based trading signal to Dashboard.
+
+        Graceful no-op if publisher is not available.
+
+        Args:
+            symbol: Trading pair symbol
+            timeframe: Timeframe (e.g., "1d", "4h")
+            direction: Predicted direction ("upward", "downward", "consolidation")
+            probabilities: Dict of probabilities for each direction
+            confidence: Overall confidence score (0-1)
+            is_actionable: Whether the signal is actionable
+            importance: Signal importance (1=normal, 2=high confidence)
+            factors: Dict of factor contributions (optional)
+            volatility_regime: Current volatility regime (optional)
+            atr_percent: ATR as percentage of price (optional)
+        """
+        if not self._publisher:
+            return
+
+        payload = create_probability_signal_payload(
+            symbol=symbol,
+            timeframe=timeframe,
+            direction=direction,
+            probabilities=probabilities,
+            confidence=confidence,
+            is_actionable=is_actionable,
+            importance=importance,
+            factors=factors,
+            volatility_regime=volatility_regime,
+            atr_percent=atr_percent
+        )
+
+        await self._publisher.publish_probability_signal(payload)
 
     def increment_error_count(self) -> None:
         """Increment error counter."""
