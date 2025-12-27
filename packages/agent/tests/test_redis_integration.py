@@ -84,9 +84,6 @@ class TestMessageTypes:
             pairs=["EUR_USD"],
             timeframes=timeframes,
             telegram=telegram,
-            adx_threshold=25.0,
-            rsi_overbought=75.0,
-            rsi_oversold=25.0,
             notify_hourly_summary=False
         )
         msg = ConfigUpdateMessage(payload=payload)
@@ -94,7 +91,7 @@ class TestMessageTypes:
         assert msg.payload.pairs == ["EUR_USD"]
         assert len(msg.payload.timeframes) == 2
         assert msg.payload.telegram.bot_token == "token123"
-        assert msg.payload.adx_threshold == 25.0
+        assert msg.payload.notify_hourly_summary is False
 
     def test_status_message_creation(self):
         """Test creating a status message."""
@@ -172,7 +169,7 @@ class TestMessageParsing:
             "correlation_id": "test-uuid",
             "payload": {
                 "pairs": ["EUR_USD", "GBP_USD"],
-                "adx_threshold": 25.0
+                "notify_hourly_summary": True
             }
         }
 
@@ -180,7 +177,7 @@ class TestMessageParsing:
 
         assert isinstance(msg, ConfigUpdateMessage)
         assert msg.payload.pairs == ["EUR_USD", "GBP_USD"]
-        assert msg.payload.adx_threshold == 25.0
+        assert msg.payload.notify_hourly_summary is True
 
     def test_parse_unknown_message_type(self):
         """Test parsing unknown message type returns None."""
@@ -392,7 +389,7 @@ class TestMessageSerialization:
         """Test serializing config update message to JSON."""
         payload = ConfigUpdatePayload(
             pairs=["EUR_USD"],
-            adx_threshold=25.0
+            notify_hourly_summary=True
         )
         msg = ConfigUpdateMessage(payload=payload)
 
@@ -401,7 +398,7 @@ class TestMessageSerialization:
 
         assert data["type"] == "config_update"
         assert data["payload"]["pairs"] == ["EUR_USD"]
-        assert data["payload"]["adx_threshold"] == 25.0
+        assert data["payload"]["notify_hourly_summary"] is True
 
 
 if __name__ == "__main__":

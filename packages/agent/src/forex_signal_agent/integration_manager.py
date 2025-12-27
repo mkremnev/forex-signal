@@ -261,22 +261,6 @@ class IntegrationManager:
                 config_changed = True
                 logger.info("Updated telegram settings")
 
-            # Update thresholds
-            if payload.adx_threshold is not None:
-                self.app.config.adx_threshold = payload.adx_threshold
-                config_changed = True
-                logger.info(f"Updated ADX threshold: {payload.adx_threshold}")
-
-            if payload.rsi_overbought is not None:
-                self.app.config.rsi_overbought = payload.rsi_overbought
-                config_changed = True
-                logger.info(f"Updated RSI overbought: {payload.rsi_overbought}")
-
-            if payload.rsi_oversold is not None:
-                self.app.config.rsi_oversold = payload.rsi_oversold
-                config_changed = True
-                logger.info(f"Updated RSI oversold: {payload.rsi_oversold}")
-
             if payload.notify_hourly_summary is not None:
                 self.app.config.notify_hourly_summary = payload.notify_hourly_summary
                 config_changed = True

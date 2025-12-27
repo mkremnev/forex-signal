@@ -236,15 +236,6 @@ class TestMessagePayloads:
 class TestConfigIntegration:
     """Tests for configuration integration."""
 
-    def test_config_has_migration_settings(self) -> None:
-        """Test that config includes migration settings."""
-        config = AppConfig()
-
-        assert hasattr(config, "migration")
-        assert config.migration.use_probability_analyzer is False
-        assert config.migration.log_both_analyzers is True
-        assert config.migration.publish_to_test_channel is True
-
     def test_config_has_probability_settings(self) -> None:
         """Test that config includes probability settings."""
         config = AppConfig()

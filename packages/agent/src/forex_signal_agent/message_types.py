@@ -82,9 +82,6 @@ class ConfigUpdatePayload(BaseModel):
     pairs: Optional[List[str]] = None
     timeframes: Optional[List[TimeframeConfigPayload]] = None
     telegram: Optional[TelegramConfigPayload] = None
-    adx_threshold: Optional[float] = None
-    rsi_overbought: Optional[float] = None
-    rsi_oversold: Optional[float] = None
     notify_hourly_summary: Optional[bool] = None
 
 

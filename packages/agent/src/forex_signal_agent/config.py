@@ -86,19 +86,6 @@ class CryptoConfig:
 
 
 @dataclass
-class BacktestV2Config:
-    """Configuration for probabilistic backtest engine"""
-    enabled: bool = False
-    initial_capital: float = 10000.0
-    position_size_pct: float = 0.02  # 2% per trade
-    stop_loss_pct: float = 0.02  # 2%
-    take_profit_pct: float = 0.04  # 4%
-    max_open_trades: int = 3
-    slippage_pct: float = 0.001  # 0.1%
-    commission_pct: float = 0.001  # 0.1%
-
-
-@dataclass
 class SentimentVolatilityThresholds:
     """Thresholds for global volatility regime in sentiment analysis (ATR% values)"""
     low: float = 0.5
@@ -124,9 +111,6 @@ class AppConfig:
     pairs: List[str] = field(default_factory=lambda: ["EUR_USD", "GBP_USD", "USD_JPY"])
     timeframes: List[TimeframeJob] = field(default_factory=lambda: [TimeframeJob(timeframe="5", poll_interval_seconds=60)])
     telegram: TelegramConfig = field(default_factory=TelegramConfig)
-    adx_threshold: float = 20.0
-    rsi_overbought: float = 70.0
-    rsi_oversold: float = 30.0
     notify_hourly_summary: bool = True
     backtest: BacktestConfig = field(default_factory=BacktestConfig)
     sqlite_path: str = "./data/cache.db"
@@ -135,7 +119,6 @@ class AppConfig:
     volatility: VolatilityConfig = field(default_factory=VolatilityConfig)
     probability: ProbabilityConfig = field(default_factory=ProbabilityConfig)
     crypto: CryptoConfig = field(default_factory=CryptoConfig)
-    backtest_v2: BacktestV2Config = field(default_factory=BacktestV2Config)
     sentiment: SentimentConfig = field(default_factory=SentimentConfig)
 
 

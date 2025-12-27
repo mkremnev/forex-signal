@@ -31,13 +31,6 @@ class MockRedisConfig:
 
 
 @dataclass
-class MockMigrationConfig:
-    use_probability_analyzer: bool = False
-    log_both_analyzers: bool = True
-    publish_to_test_channel: bool = True
-
-
-@dataclass
 class MockCorrelationConfig:
     lookback_hours: int = 24
     min_data_points: int = 20
@@ -45,18 +38,28 @@ class MockCorrelationConfig:
 
 
 @dataclass
+class MockVolatilityRegimeThresholds:
+    low: float = 0.5
+    normal: float = 1.0
+    high: float = 2.0
+
+
+@dataclass
 class MockVolatilityConfig:
     atr_period: int = 14
     consolidation_threshold: float = 0.01
+    regime_thresholds: MockVolatilityRegimeThresholds = field(default_factory=MockVolatilityRegimeThresholds)
 
 
 @dataclass
 class MockProbabilityConfig:
     confidence_threshold: float = 0.4
     high_confidence_threshold: float = 0.6
-    forex_weights: dict = field(default_factory=lambda: {
+    roc_lookback_periods: int = 24
+    weights: dict = field(default_factory=lambda: {
         "roc": 0.33,
         "volatility": 0.33,
+        "volume": 0.0,
         "correlation": 0.33
     })
 
@@ -69,6 +72,13 @@ class MockCryptoConfig:
 
 
 @dataclass
+class MockSentimentVolatilityThresholds:
+    low: float = 0.5
+    elevated: float = 2.0
+    crisis: float = 4.0
+
+
+@dataclass
 class MockSentimentConfig:
     enabled: bool = True
     roc_lookback: int = 24
@@ -76,6 +86,7 @@ class MockSentimentConfig:
     safe_haven_threshold: float = 0.3
     risk_assets: List[str] = field(default_factory=lambda: ["BTCUSDT", "ETHUSDT"])
     safe_haven_assets: List[str] = field(default_factory=lambda: ["GC=F", "USDJPY=X"])
+    volatility_thresholds: MockSentimentVolatilityThresholds = field(default_factory=MockSentimentVolatilityThresholds)
 
 
 @dataclass
@@ -86,13 +97,9 @@ class MockAppConfig:
         default_factory=lambda: [MockTimeframeJob()]
     )
     telegram: MockTelegramConfig = field(default_factory=MockTelegramConfig)
-    adx_threshold: float = 20.0
-    rsi_overbought: float = 70.0
-    rsi_oversold: float = 30.0
     notify_hourly_summary: bool = False
     sqlite_path: str = ":memory:"
     redis: MockRedisConfig = field(default_factory=MockRedisConfig)
-    migration: MockMigrationConfig = field(default_factory=MockMigrationConfig)
     correlation: MockCorrelationConfig = field(default_factory=MockCorrelationConfig)
     volatility: MockVolatilityConfig = field(default_factory=MockVolatilityConfig)
     probability: MockProbabilityConfig = field(default_factory=MockProbabilityConfig)
@@ -106,14 +113,12 @@ class TestProbabilisticAnalyzerWiring:
     @pytest.mark.asyncio
     async def test_application_initializes_probabilistic_analyzer(self):
         """
-        Test that Application initializes ProbabilisticAnalyzer when flag is enabled.
+        Test that Application initializes ProbabilisticAnalyzer.
 
-        When migration.use_probability_analyzer=True, after app.initialize(),
-        app.probabilistic_analyzer should not be None.
+        After app.initialize(), app.probabilistic_analyzer should not be None.
         """
-        # Create config with probabilistic mode enabled
+        # Create config
         config = MockAppConfig()
-        config.migration.use_probability_analyzer = True
 
         with patch(
             "forex_signal_agent.main.load_config",
@@ -147,13 +152,12 @@ class TestProbabilisticAnalyzerWiring:
     @pytest.mark.asyncio
     async def test_probabilistic_analyzer_always_initialized(self):
         """
-        Test that ProbabilisticAnalyzer is always initialized regardless of migration flag.
+        Test that ProbabilisticAnalyzer is always initialized.
 
-        After migration completion, probabilistic analyzer is mandatory and always initialized.
+        Probabilistic analyzer is mandatory and always initialized.
         """
-        # Create config (migration flag is now ignored)
+        # Create config
         config = MockAppConfig()
-        config.migration.use_probability_analyzer = False  # This flag is now ignored
 
         with patch(
             "forex_signal_agent.main.load_config",
@@ -189,10 +193,10 @@ class TestProbabilisticAnalyzerWiring:
         """Test that ProbabilisticAnalyzer is initialized with config weights."""
         # Create config with custom weights
         config = MockAppConfig()
-        config.migration.use_probability_analyzer = True
-        config.probability.forex_weights = {
+        config.probability.weights = {
             "roc": 0.4,
             "volatility": 0.3,
+            "volume": 0.0,
             "correlation": 0.3
         }
 
