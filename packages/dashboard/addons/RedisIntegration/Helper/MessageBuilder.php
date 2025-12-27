@@ -142,17 +142,6 @@ class MessageBuilder
             }
         }
 
-        // Map thresholds
-        if (isset($singletonData['adx_threshold'])) {
-            $config['adx_threshold'] = (float)$singletonData['adx_threshold'];
-        }
-        if (isset($singletonData['rsi_overbought'])) {
-            $config['rsi_overbought'] = (float)$singletonData['rsi_overbought'];
-        }
-        if (isset($singletonData['rsi_oversold'])) {
-            $config['rsi_oversold'] = (float)$singletonData['rsi_oversold'];
-        }
-
         // Map other settings
         if (isset($singletonData['notify_hourly_summary'])) {
             $config['notify_hourly_summary'] = (bool)$singletonData['notify_hourly_summary'];

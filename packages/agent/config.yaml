@@ -21,13 +21,6 @@ telegram:
   chat_id: ""
   message_cooldown_minutes: 60
 
-# Порог для тренда по ADX
-adx_threshold: 20.0
-
-# RSI уровни
-rsi_overbought: 70.0
-rsi_oversold: 30.0
-
 # Ежечасное «сердцебиение» в канал
 notify_hourly_summary: true
 
@@ -93,13 +86,3 @@ sentiment:
     elevated: 2.0
     crisis: 4.0
 
-# Probabilistic backtest settings
-backtest_v2:
-  enabled: false
-  initial_capital: 10000.0
-  position_size_pct: 0.02
-  stop_loss_pct: 0.02
-  take_profit_pct: 0.04
-  max_open_trades: 3
-  slippage_pct: 0.001
-  commission_pct: 0.001

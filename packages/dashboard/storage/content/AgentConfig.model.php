@@ -88,43 +88,6 @@ return [
                 ],
             ],
         ],
-        // Technical analysis thresholds
-        [
-            "name" => "adx_threshold",
-            "label" => "ADX Threshold",
-            "type" => "number",
-            "default" => 20.0,
-            "opts" => [
-                "step" => 0.1,
-                "min" => 0,
-                "max" => 100,
-            ],
-            "info" => "ADX value above which trend is considered strong",
-        ],
-        [
-            "name" => "rsi_overbought",
-            "label" => "RSI Overbought Level",
-            "type" => "number",
-            "default" => 70.0,
-            "opts" => [
-                "step" => 1,
-                "min" => 50,
-                "max" => 100,
-            ],
-            "info" => "RSI level indicating overbought condition",
-        ],
-        [
-            "name" => "rsi_oversold",
-            "label" => "RSI Oversold Level",
-            "type" => "number",
-            "default" => 30.0,
-            "opts" => [
-                "step" => 1,
-                "min" => 0,
-                "max" => 50,
-            ],
-            "info" => "RSI level indicating oversold condition",
-        ],
         // Other settings
         [
             "name" => "notify_hourly_summary",
@@ -146,9 +109,6 @@ return [
             "chat_id" => "",
             "message_cooldown_minutes" => 60,
         ],
-        "adx_threshold" => 20.0,
-        "rsi_overbought" => 70.0,
-        "rsi_oversold" => 30.0,
         "notify_hourly_summary" => true,
     ],
 ];
