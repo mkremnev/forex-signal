@@ -61,8 +61,8 @@ class VolatilityAnalyzer:
         print(f"Consolidation: {result.is_consolidation}")
     """
 
-    # Regime thresholds (ATR% values)
-    REGIME_THRESHOLDS = {
+    # Default regime thresholds (ATR% values)
+    DEFAULT_REGIME_THRESHOLDS = {
         "low": 0.5,      # < 0.5% is low volatility
         "normal": 1.0,   # 0.5% - 1.0% is normal
         "high": 2.0,     # 1.0% - 2.0% is high
@@ -73,15 +73,18 @@ class VolatilityAnalyzer:
         self,
         atr_period: int = 14,
         consolidation_threshold: float = 0.01,  # 1%
+        regime_thresholds: dict | None = None,
     ):
         """Initialize volatility analyzer.
 
         Args:
             atr_period: Period for ATR calculation
             consolidation_threshold: ATR% threshold for consolidation (default 1%)
+            regime_thresholds: Dict with 'low', 'normal', 'high' ATR% thresholds
         """
         self._atr_period = atr_period
         self._consolidation_threshold = consolidation_threshold
+        self._regime_thresholds = regime_thresholds or self.DEFAULT_REGIME_THRESHOLDS
 
     @property
     def atr_period(self) -> int:
@@ -248,11 +251,11 @@ class VolatilityAnalyzer:
         Returns:
             VolatilityRegime classification
         """
-        if atr_percent < self.REGIME_THRESHOLDS["low"]:
+        if atr_percent < self._regime_thresholds["low"]:
             return VolatilityRegime.LOW
-        elif atr_percent < self.REGIME_THRESHOLDS["normal"]:
+        elif atr_percent < self._regime_thresholds["normal"]:
             return VolatilityRegime.NORMAL
-        elif atr_percent < self.REGIME_THRESHOLDS["high"]:
+        elif atr_percent < self._regime_thresholds["high"]:
             return VolatilityRegime.HIGH
         else:
             return VolatilityRegime.EXTREME

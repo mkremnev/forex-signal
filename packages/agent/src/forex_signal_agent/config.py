@@ -40,14 +40,6 @@ class RedisConfig:
 
 
 @dataclass
-class MigrationConfig:
-    """Feature flags for probabilistic analyzer migration"""
-    use_probability_analyzer: bool = False
-    log_both_analyzers: bool = True
-    publish_to_test_channel: bool = True
-
-
-@dataclass
 class CorrelationConfig:
     """Configuration for correlation analysis"""
     lookback_hours: int = 24
@@ -56,10 +48,19 @@ class CorrelationConfig:
 
 
 @dataclass
+class VolatilityRegimeThresholds:
+    """Thresholds for volatility regime classification (ATR% values)"""
+    low: float = 0.5       # < 0.5% is low volatility
+    normal: float = 1.0    # 0.5% - 1.0% is normal
+    high: float = 2.0      # 1.0% - 2.0% is high, > 2.0% is extreme
+
+
+@dataclass
 class VolatilityConfig:
     """Configuration for volatility analysis"""
     atr_period: int = 14
     consolidation_threshold: float = 0.01  # 1% ATR/price ratio
+    regime_thresholds: VolatilityRegimeThresholds = field(default_factory=VolatilityRegimeThresholds)
 
 
 @dataclass
@@ -67,16 +68,12 @@ class ProbabilityConfig:
     """Configuration for probability model"""
     confidence_threshold: float = 0.4
     high_confidence_threshold: float = 0.6
-    forex_weights: dict = field(default_factory=lambda: {
+    roc_lookback_periods: int = 24
+    weights: dict = field(default_factory=lambda: {
         "roc": 0.33,
         "volatility": 0.33,
+        "volume": 0.0,
         "correlation": 0.33
-    })
-    crypto_weights: dict = field(default_factory=lambda: {
-        "roc": 0.25,
-        "volatility": 0.25,
-        "volume": 0.25,
-        "correlation": 0.25
     })
 
 
@@ -102,14 +99,23 @@ class BacktestV2Config:
 
 
 @dataclass
+class SentimentVolatilityThresholds:
+    """Thresholds for global volatility regime in sentiment analysis (ATR% values)"""
+    low: float = 0.5
+    elevated: float = 2.0
+    crisis: float = 4.0
+
+
+@dataclass
 class SentimentConfig:
     """Configuration for market sentiment aggregation"""
     enabled: bool = True
     roc_lookback: int = 24
     risk_threshold: float = 0.3
     safe_haven_threshold: float = 0.3
-    risk_assets: List[str] = field(default_factory=lambda: ["BTCUSDT", "ETHUSDT"])
-    safe_haven_assets: List[str] = field(default_factory=lambda: ["GC=F", "USDJPY=X"])
+    risk_assets: List[str] = field(default_factory=lambda: ["BTCUSDT", "ETHUSDT", "SOLUSDT"])
+    safe_haven_assets: List[str] = field(default_factory=lambda: ["GC=F", "USDJPY=X", "USDCHF=X"])
+    volatility_thresholds: SentimentVolatilityThresholds = field(default_factory=SentimentVolatilityThresholds)
 
 
 @dataclass
@@ -125,8 +131,6 @@ class AppConfig:
     backtest: BacktestConfig = field(default_factory=BacktestConfig)
     sqlite_path: str = "./data/cache.db"
     redis: RedisConfig = field(default_factory=RedisConfig)
-    # Probabilistic analyzer migration config
-    migration: MigrationConfig = field(default_factory=MigrationConfig)
     correlation: CorrelationConfig = field(default_factory=CorrelationConfig)
     volatility: VolatilityConfig = field(default_factory=VolatilityConfig)
     probability: ProbabilityConfig = field(default_factory=ProbabilityConfig)
@@ -159,9 +163,7 @@ def load_config(path: Optional[str] = None) -> AppConfig:
             pass
     cfg.redis.password = os.getenv("REDIS_PASSWORD", cfg.redis.password)
 
-    # Migration env overrides
-    if os.getenv("PROBABILITY_ANALYZER", "").lower() in ("true", "1", "yes"):
-        cfg.migration.use_probability_analyzer = True
+    # Crypto env override
     if os.getenv("CRYPTO_ENABLED", "").lower() in ("true", "1", "yes"):
         cfg.crypto.enabled = True
 

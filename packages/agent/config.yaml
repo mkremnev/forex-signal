@@ -7,36 +7,37 @@ pairs:
   - GBPCHF=X
   - USDCAD=X
   - GC=F
+
 # Список заданий по таймфреймам
 # resolution: 1,5,15,30,60,1h,4h,D
 # poll_interval_seconds — как часто опрашивать API (подбирайте под таймфрейм и лимиты API)
 timeframes:
   - timeframe: "4h"
     poll_interval_seconds: 180
+
 telegram:
   # Лучше задавать через переменные окружения TELEGRAM_BOT_TOKEN и TELEGRAM_CHAT_ID
   bot_token: ""
   chat_id: ""
   message_cooldown_minutes: 60
+
 # Порог для тренда по ADX
 adx_threshold: 20.0
+
 # RSI уровни
 rsi_overbought: 70.0
 rsi_oversold: 30.0
+
 # Ежечасное «сердцебиение» в канал
 notify_hourly_summary: true
+
 # Бэктест
 backtest:
   enabled: false
   lookback_bars: 1500
+
 # Путь к SQLite базе для кеша
 sqlite_path: ./data/cache.db
-
-# Migration settings (legacy - probabilistic analyzer is now always enabled)
-migration:
-  use_probability_analyzer: true # Ignored - always true
-  log_both_analyzers: false
-  publish_to_test_channel: false
 
 # Correlation analysis settings
 correlation:
@@ -48,20 +49,21 @@ correlation:
 volatility:
   atr_period: 14
   consolidation_threshold: 0.01
+  regime_thresholds:
+    low: 0.5      # < 0.5% ATR is low volatility
+    normal: 1.0   # 0.5% - 1.0% is normal
+    high: 2.0     # 1.0% - 2.0% is high, > 2.0% is extreme
 
 # Probability model settings
 probability:
   confidence_threshold: 0.4
   high_confidence_threshold: 0.6
-  forex_weights:
+  roc_lookback_periods: 24
+  weights:
     roc: 0.33
     volatility: 0.33
+    volume: 0.0
     correlation: 0.33
-  crypto_weights:
-    roc: 0.25
-    volatility: 0.25
-    volume: 0.25
-    correlation: 0.25
 
 # Cryptocurrency settings (for cross-market correlation analysis)
 crypto:
@@ -71,6 +73,25 @@ crypto:
     - ETHUSDT
     - SOLUSDT
   sandbox: false
+
+# Market sentiment aggregation settings
+sentiment:
+  enabled: true
+  roc_lookback: 24
+  risk_threshold: 0.3
+  safe_haven_threshold: 0.3
+  risk_assets:
+    - BTCUSDT
+    - ETHUSDT
+    - SOLUSDT
+  safe_haven_assets:
+    - GC=F
+    - USDJPY=X
+    - USDCHF=X
+  volatility_thresholds:
+    low: 0.5
+    elevated: 2.0
+    crisis: 4.0
 
 # Probabilistic backtest settings
 backtest_v2:

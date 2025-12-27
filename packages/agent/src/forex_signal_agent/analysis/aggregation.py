@@ -137,21 +137,17 @@ class MarketSentimentAggregator:
     # Default safe haven assets
     DEFAULT_SAFE_HAVEN = ["GC=F", "USDJPY=X", "USDCHF=X"]
 
-    # Thresholds for sentiment classification
-    RISK_THRESHOLD = 0.3
-    SAFE_HAVEN_THRESHOLD = 0.3
-
-    # Volatility thresholds (ATR%)
-    VOL_LOW_THRESHOLD = 0.5
-    VOL_ELEVATED_THRESHOLD = 2.0
-    VOL_CRISIS_THRESHOLD = 4.0
-
     def __init__(
         self,
         roc_lookback: int = 24,
         atr_period: int = 14,
         risk_assets: Optional[List[str]] = None,
         safe_haven_assets: Optional[List[str]] = None,
+        risk_threshold: float = 0.3,
+        safe_haven_threshold: float = 0.3,
+        vol_low_threshold: float = 0.5,
+        vol_elevated_threshold: float = 2.0,
+        vol_crisis_threshold: float = 4.0,
     ):
         """Initialize market sentiment aggregator.
 
@@ -160,11 +156,21 @@ class MarketSentimentAggregator:
             atr_period: ATR calculation period
             risk_assets: List of risk asset symbols (default: crypto)
             safe_haven_assets: List of safe haven symbols
+            risk_threshold: Threshold for risk-on classification
+            safe_haven_threshold: Threshold for risk-off classification
+            vol_low_threshold: ATR% threshold for low volatility
+            vol_elevated_threshold: ATR% threshold for elevated volatility
+            vol_crisis_threshold: ATR% threshold for crisis volatility
         """
         self._roc_lookback = roc_lookback
         self._atr_period = atr_period
         self._risk_assets = risk_assets or self.DEFAULT_RISK_ASSETS
         self._safe_haven_assets = safe_haven_assets or self.DEFAULT_SAFE_HAVEN
+        self._risk_threshold = risk_threshold
+        self._safe_haven_threshold = safe_haven_threshold
+        self._vol_low_threshold = vol_low_threshold
+        self._vol_elevated_threshold = vol_elevated_threshold
+        self._vol_crisis_threshold = vol_crisis_threshold
 
     def aggregate(self, all_data: Dict[str, pd.DataFrame]) -> MarketSentiment:
         """Aggregate market data to determine sentiment.
@@ -336,7 +342,7 @@ class MarketSentimentAggregator:
 
         # Check for volatility expansion (compare recent vs historical)
         # Simplified: just check if above normal threshold
-        volatility_expansion = cross_market > self.VOL_ELEVATED_THRESHOLD
+        volatility_expansion = cross_market > self._vol_elevated_threshold
 
         return GlobalVolatilityIndicators(
             forex_avg_atr_pct=forex_avg,
@@ -355,11 +361,11 @@ class MarketSentimentAggregator:
         Returns:
             Volatility regime classification
         """
-        if atr_pct < self.VOL_LOW_THRESHOLD:
+        if atr_pct < self._vol_low_threshold:
             return VolatilityRegimeGlobal.LOW
-        elif atr_pct < self.VOL_ELEVATED_THRESHOLD:
+        elif atr_pct < self._vol_elevated_threshold:
             return VolatilityRegimeGlobal.NORMAL
-        elif atr_pct < self.VOL_CRISIS_THRESHOLD:
+        elif atr_pct < self._vol_crisis_threshold:
             return VolatilityRegimeGlobal.ELEVATED
         else:
             return VolatilityRegimeGlobal.CRISIS
@@ -403,18 +409,18 @@ class MarketSentimentAggregator:
             return sentiment, confidence, factor
 
         # Classify based on net score
-        if net_score > self.RISK_THRESHOLD:
+        if net_score > self._risk_threshold:
             sentiment = RiskSentiment.RISK_ON
             confidence = min(1.0, 0.5 + abs(net_score))
-            factor = "crypto_strength" if risk.risk_score > 0.3 else "risk_appetite"
-        elif net_score < -self.SAFE_HAVEN_THRESHOLD or safe_haven.safe_haven_score > self.SAFE_HAVEN_THRESHOLD:
+            factor = "crypto_strength" if risk.risk_score > self._risk_threshold else "risk_appetite"
+        elif net_score < -self._safe_haven_threshold or safe_haven.safe_haven_score > self._safe_haven_threshold:
             sentiment = RiskSentiment.RISK_OFF
             confidence = min(1.0, 0.5 + max(abs(net_score), safe_haven.safe_haven_score))
             if safe_haven.gold_roc_24h > 1.0:
                 factor = "gold_demand"
-            elif safe_haven.jpy_strength > 0.3:
+            elif safe_haven.jpy_strength > self._safe_haven_threshold:
                 factor = "jpy_strength"
-            elif safe_haven.chf_strength > 0.3:
+            elif safe_haven.chf_strength > self._safe_haven_threshold:
                 factor = "chf_strength"
             else:
                 factor = "safe_haven_demand"

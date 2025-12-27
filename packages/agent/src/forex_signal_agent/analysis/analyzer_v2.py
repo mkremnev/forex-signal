@@ -96,10 +96,6 @@ class ProbabilisticAnalyzer:
                 print(f"Signal: {event.data['direction']}")
     """
 
-    # Thresholds for events
-    CONFIDENCE_THRESHOLD = 0.4
-    HIGH_CONFIDENCE_THRESHOLD = 0.6
-
     def __init__(
         self,
         correlation_lookback_hours: int = 24,
@@ -108,6 +104,10 @@ class ProbabilisticAnalyzer:
         atr_period: int = 14,
         consolidation_threshold: float = 0.01,
         probability_weights: ProbabilityWeights | None = None,
+        confidence_threshold: float = 0.4,
+        high_confidence_threshold: float = 0.6,
+        roc_lookback_periods: int = 24,
+        volatility_regime_thresholds: dict | None = None,
     ):
         """Initialize probabilistic analyzer.
 
@@ -118,7 +118,14 @@ class ProbabilisticAnalyzer:
             atr_period: ATR calculation period
             consolidation_threshold: ATR% threshold for consolidation
             probability_weights: Weights for probability model
+            confidence_threshold: Minimum confidence for signal emission
+            high_confidence_threshold: Confidence threshold for actionable signals
+            roc_lookback_periods: Periods for ROC calculation
+            volatility_regime_thresholds: Thresholds for volatility regime classification
         """
+        self._confidence_threshold = confidence_threshold
+        self._high_confidence_threshold = high_confidence_threshold
+
         self._correlation = CorrelationAnalyzer(
             lookback_hours=correlation_lookback_hours,
             min_data_points=correlation_min_points,
@@ -127,10 +134,14 @@ class ProbabilisticAnalyzer:
         self._volatility = VolatilityAnalyzer(
             atr_period=atr_period,
             consolidation_threshold=consolidation_threshold,
+            regime_thresholds=volatility_regime_thresholds,
         )
         self._probability = ProbabilityModel(
             weights=probability_weights,
-            lookback_periods=24,
+            lookback_periods=roc_lookback_periods,
+            confidence_threshold=confidence_threshold,
+            high_confidence_threshold=high_confidence_threshold,
+            atr_period=atr_period,
         )
 
     @property
@@ -247,8 +258,8 @@ class ProbabilisticAnalyzer:
     ) -> list[AnalysisEvent]:
         """Generate probability signal events.
 
-        Emits probability_signal when confidence >= 0.4
-        Sets importance=2 when confidence >= 0.6
+        Emits probability_signal when confidence >= confidence_threshold
+        Sets importance=2 when confidence >= high_confidence_threshold
 
         Args:
             result: Probability analysis result
@@ -261,12 +272,12 @@ class ProbabilisticAnalyzer:
         events: list[AnalysisEvent] = []
 
         # Only emit if above confidence threshold
-        if result.confidence < self.CONFIDENCE_THRESHOLD:
+        if result.confidence < self._confidence_threshold:
             return events
 
         # Determine importance
         importance = (
-            2 if result.confidence >= self.HIGH_CONFIDENCE_THRESHOLD else 1
+            2 if result.confidence >= self._high_confidence_threshold else 1
         )
 
         # Build event data

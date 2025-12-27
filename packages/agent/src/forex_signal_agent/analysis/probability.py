@@ -151,23 +151,28 @@ class ProbabilityModel:
         print(f"Confidence: {result.confidence:.2%}")
     """
 
-    # Thresholds for actionable signals
-    CONFIDENCE_THRESHOLD = 0.4
-    HIGH_CONFIDENCE_THRESHOLD = 0.6
-
     def __init__(
         self,
         weights: ProbabilityWeights | None = None,
         lookback_periods: int = 24,
+        confidence_threshold: float = 0.4,
+        high_confidence_threshold: float = 0.6,
+        atr_period: int = 14,
     ):
         """Initialize probability model.
 
         Args:
             weights: Factor weights (default: equal weights 0.25)
             lookback_periods: Periods for ROC calculation
+            confidence_threshold: Minimum confidence for signal emission
+            high_confidence_threshold: Confidence threshold for actionable signals
+            atr_period: Period for ATR calculation
         """
         self._weights = weights or ProbabilityWeights()
         self._lookback = lookback_periods
+        self._confidence_threshold = confidence_threshold
+        self._high_confidence_threshold = high_confidence_threshold
+        self._atr_period = atr_period
 
     @property
     def weights(self) -> ProbabilityWeights:
@@ -316,9 +321,7 @@ class ProbabilityModel:
         Returns:
             ATR% or None
         """
-        atr_period = 14
-
-        if len(df) < atr_period + 1:
+        if len(df) < self._atr_period + 1:
             return None
 
         high = df["high"]
@@ -332,7 +335,7 @@ class ProbabilityModel:
         tr3 = (low - prev_close).abs()
 
         true_range = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-        atr = true_range.rolling(window=atr_period).mean().iloc[-1]
+        atr = true_range.rolling(window=self._atr_period).mean().iloc[-1]
 
         current_price = close.iloc[-1]
 
@@ -487,7 +490,7 @@ class ProbabilityModel:
     def _is_actionable(self, direction: Direction, confidence: float) -> bool:
         """Determine if the signal is actionable.
 
-        Actionable = confidence >= 0.6 AND direction != consolidation
+        Actionable = confidence >= high_confidence_threshold AND direction != consolidation
 
         Args:
             direction: Predicted direction
@@ -497,7 +500,7 @@ class ProbabilityModel:
             True if signal is actionable
         """
         return (
-            confidence >= self.HIGH_CONFIDENCE_THRESHOLD
+            confidence >= self._high_confidence_threshold
             and direction != Direction.CONSOLIDATION
         )
 

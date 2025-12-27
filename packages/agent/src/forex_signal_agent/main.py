@@ -5,7 +5,6 @@ import asyncio
 import logging
 import signal
 import sys
-from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, List, Optional, Union
 
@@ -288,13 +287,22 @@ class Application:
                 )
 
             # Initialize probabilistic analyzer (always required)
-            forex_weights = self.config.probability.forex_weights
+            prob_weights = self.config.probability.weights
             weights = ProbabilityWeights(
-                roc=forex_weights.get("roc", 0.33),
-                volatility=forex_weights.get("volatility", 0.33),
-                volume=0.0,  # Volume not used for Forex
-                correlation=forex_weights.get("correlation", 0.33),
+                roc=prob_weights.get("roc", 0.33),
+                volatility=prob_weights.get("volatility", 0.33),
+                volume=prob_weights.get("volume", 0.0),
+                correlation=prob_weights.get("correlation", 0.33),
             )
+
+            # Build volatility regime thresholds dict
+            vol_thresholds = self.config.volatility.regime_thresholds
+            volatility_regime_thresholds = {
+                "low": vol_thresholds.low if hasattr(vol_thresholds, 'low') else vol_thresholds.get("low", 0.5),
+                "normal": vol_thresholds.normal if hasattr(vol_thresholds, 'normal') else vol_thresholds.get("normal", 1.0),
+                "high": vol_thresholds.high if hasattr(vol_thresholds, 'high') else vol_thresholds.get("high", 2.0),
+            }
+
             self.probabilistic_analyzer = ProbabilisticAnalyzer(
                 correlation_lookback_hours=self.config.correlation.lookback_hours,
                 correlation_min_points=self.config.correlation.min_data_points,
@@ -302,6 +310,10 @@ class Application:
                 atr_period=self.config.volatility.atr_period,
                 consolidation_threshold=self.config.volatility.consolidation_threshold,
                 probability_weights=weights,
+                confidence_threshold=self.config.probability.confidence_threshold,
+                high_confidence_threshold=self.config.probability.high_confidence_threshold,
+                roc_lookback_periods=self.config.probability.roc_lookback_periods,
+                volatility_regime_thresholds=volatility_regime_thresholds,
             )
             self.logger.info(
                 "Probabilistic analyzer initialized",
@@ -310,11 +322,19 @@ class Application:
 
             # Initialize sentiment aggregator if enabled
             if self.config.sentiment.enabled:
+                # Get sentiment volatility thresholds
+                sent_vol_thresholds = self.config.sentiment.volatility_thresholds
+
                 self.sentiment_aggregator = MarketSentimentAggregator(
                     roc_lookback=self.config.sentiment.roc_lookback,
                     atr_period=self.config.volatility.atr_period,
                     risk_assets=self.config.sentiment.risk_assets,
                     safe_haven_assets=self.config.sentiment.safe_haven_assets,
+                    risk_threshold=self.config.sentiment.risk_threshold,
+                    safe_haven_threshold=self.config.sentiment.safe_haven_threshold,
+                    vol_low_threshold=sent_vol_thresholds.low if hasattr(sent_vol_thresholds, 'low') else sent_vol_thresholds.get("low", 0.5),
+                    vol_elevated_threshold=sent_vol_thresholds.elevated if hasattr(sent_vol_thresholds, 'elevated') else sent_vol_thresholds.get("elevated", 2.0),
+                    vol_crisis_threshold=sent_vol_thresholds.crisis if hasattr(sent_vol_thresholds, 'crisis') else sent_vol_thresholds.get("crisis", 4.0),
                 )
                 self.logger.info(
                     "Market sentiment aggregator initialized",
@@ -456,11 +476,15 @@ class Application:
             if self.crypto_client and self.config.crypto.enabled:
                 for sym in self.config.crypto.pairs:
                     try:
-                        candles = await self.crypto_client.get_candles(sym, "1h", bars=48)
+                        candles = await self.crypto_client.get_candles(
+                            sym, "1h", bars=48
+                        )
                         if not candles.empty:
                             all_data[sym] = candles
                     except Exception as e:
-                        self.logger.warning(f"Failed to fetch crypto data for {sym}: {e}")
+                        self.logger.warning(
+                            f"Failed to fetch crypto data for {sym}: {e}"
+                        )
 
             if all_data:
                 self.probabilistic_analyzer.update_correlations(all_data)
@@ -578,13 +602,22 @@ async def run_backtest(args):
     crypto_client = None
 
     # Initialize probabilistic analyzer
-    forex_weights = cfg.probability.forex_weights
+    prob_weights = cfg.probability.weights
     weights = ProbabilityWeights(
-        roc=forex_weights.get("roc", 0.33),
-        volatility=forex_weights.get("volatility", 0.33),
-        volume=0.0,
-        correlation=forex_weights.get("correlation", 0.33),
+        roc=prob_weights.get("roc", 0.33),
+        volatility=prob_weights.get("volatility", 0.33),
+        volume=prob_weights.get("volume", 0.0),
+        correlation=prob_weights.get("correlation", 0.33),
     )
+
+    # Build volatility regime thresholds dict
+    vol_thresholds = cfg.volatility.regime_thresholds
+    volatility_regime_thresholds = {
+        "low": vol_thresholds.low if hasattr(vol_thresholds, 'low') else vol_thresholds.get("low", 0.5),
+        "normal": vol_thresholds.normal if hasattr(vol_thresholds, 'normal') else vol_thresholds.get("normal", 1.0),
+        "high": vol_thresholds.high if hasattr(vol_thresholds, 'high') else vol_thresholds.get("high", 2.0),
+    }
+
     analyzer = ProbabilisticAnalyzer(
         correlation_lookback_hours=cfg.correlation.lookback_hours,
         correlation_min_points=cfg.correlation.min_data_points,
@@ -592,10 +625,16 @@ async def run_backtest(args):
         atr_period=cfg.volatility.atr_period,
         consolidation_threshold=cfg.volatility.consolidation_threshold,
         probability_weights=weights,
+        confidence_threshold=cfg.probability.confidence_threshold,
+        high_confidence_threshold=cfg.probability.high_confidence_threshold,
+        roc_lookback_periods=cfg.probability.roc_lookback_periods,
+        volatility_regime_thresholds=volatility_regime_thresholds,
     )
 
     try:
-        logger.info("Starting probabilistic backtesting", extra={"event_type": "backtest_start"})
+        logger.info(
+            "Starting probabilistic backtesting", extra={"event_type": "backtest_start"}
+        )
 
         # Initialize crypto client if enabled
         if cfg.crypto.enabled:
@@ -629,7 +668,9 @@ async def run_backtest(args):
         for tf_job in cfg.timeframes:
             tf = tf_job.timeframe
             for sym in cfg.pairs:
-                df = await fetch_candles(client, sym, tf, bars=cfg.backtest.lookback_bars)
+                df = await fetch_candles(
+                    client, sym, tf, bars=cfg.backtest.lookback_bars
+                )
                 if df.empty:
                     logger.warning(f"No data for {sym} {tf}")
                     continue
@@ -639,7 +680,9 @@ async def run_backtest(args):
                 logger.info(
                     f"Backtest {sym} {tf}: {len(result.events)} events, "
                     f"direction={result.probability.direction.value if result.probability else 'N/A'}, "
-                    f"confidence={result.probability.confidence:.2%}" if result.probability else "",
+                    f"confidence={result.probability.confidence:.2%}"
+                    if result.probability
+                    else "",
                     extra={
                         "event_type": "backtest_results",
                         "symbol": sym,
@@ -660,7 +703,9 @@ async def run_backtest(args):
                 tf = tf_job.timeframe
                 for sym in cfg.crypto.pairs:
                     try:
-                        df = await crypto_client.get_candles(sym, tf, bars=cfg.backtest.lookback_bars)
+                        df = await crypto_client.get_candles(
+                            sym, tf, bars=cfg.backtest.lookback_bars
+                        )
                         if df.empty:
                             logger.warning(f"No data for {sym} {tf}")
                             continue
@@ -670,7 +715,9 @@ async def run_backtest(args):
                         logger.info(
                             f"Backtest {sym} {tf}: {len(result.events)} events, "
                             f"direction={result.probability.direction.value if result.probability else 'N/A'}, "
-                            f"confidence={result.probability.confidence:.2%}" if result.probability else "",
+                            f"confidence={result.probability.confidence:.2%}"
+                            if result.probability
+                            else "",
                             extra={
                                 "event_type": "backtest_results",
                                 "symbol": sym,
@@ -687,7 +734,9 @@ async def run_backtest(args):
                         logger.error(f"Error backtesting {sym}: {e}")
 
     except Exception as e:
-        logger.error(f"Error during backtesting: {e}", extra={"event_type": "backtest_error"})
+        logger.error(
+            f"Error during backtesting: {e}", extra={"event_type": "backtest_error"}
+        )
         raise
     finally:
         await client.close()
